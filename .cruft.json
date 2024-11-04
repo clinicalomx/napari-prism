@@ -4,18 +4,17 @@
   "checkout": null,
   "context": {
     "cookiecutter": {
-      "project_name": "project-name",
-      "package_name": "project_name",
-      "project_description": "A very interesting piece of code",
-      "author_full_name": "Your Name",
-      "author_email": "yourname@example.com",
-      "github_user": "your_github_username",
+      "project_name": "tmaprocessor",
+      "package_name": "tmaprocessor",
+      "project_description": "tba",
+      "author_full_name": "Rafael Tubelleza",
+      "author_email": "rafaelrtubelleza@gmail.com",
+      "github_user": "rtubelleza",
       "github_repo": "project-name",
       "license": "MIT License",
       "ide_integration": true,
       "_copy_without_render": [
-        ".github/workflows/build.yaml",
-        ".github/workflows/test.yaml",
+        ".github/workflows/test_and_deploy.yaml",
         "docs/_templates/autosummary/**.rst"
       ],
       "_render_devdocs": false,
