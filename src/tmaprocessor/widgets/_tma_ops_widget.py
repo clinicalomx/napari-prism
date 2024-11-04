@@ -6,7 +6,6 @@ if TYPE_CHECKING:
 import geopandas as gpd
 from magicgui.widgets import Container, create_widget, ComboBox, Table, ProgressBar, Select
 from ..models.tma_ops._tma_model import TMAMasker, TMADearrayer, TMASegmenter, TMAMeasurer
-from ..readers._qptiff_reader import QptiffLoader, PSPLoader, PCFLoader
 import dask.array as da
 import skimage 
 import shapely
