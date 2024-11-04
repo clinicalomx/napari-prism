@@ -1,0 +1,35 @@
+digraph "packages" {
+rankdir=BT
+charset="utf-8"
+"tmaprocessor" [color="black", label=<tmaprocessor>, shape="box", style="solid"];
+"tmaprocessor.models" [color="black", label=<tmaprocessor.models>, shape="box", style="solid"];
+"tmaprocessor.models._utils" [color="black", label=<tmaprocessor.models._utils>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops" [color="black", label=<tmaprocessor.models.adata_ops>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops._anndata_helpers" [color="black", label=<tmaprocessor.models.adata_ops._anndata_helpers>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops.cell_typing" [color="black", label=<tmaprocessor.models.adata_ops.cell_typing>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops.cell_typing._augmentation" [color="black", label=<tmaprocessor.models.adata_ops.cell_typing._augmentation>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops.cell_typing._clustannot" [color="black", label=<tmaprocessor.models.adata_ops.cell_typing._clustannot>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops.cell_typing._clusteval" [color="black", label=<tmaprocessor.models.adata_ops.cell_typing._clusteval>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops.cell_typing._clustsearch" [color="black", label=<tmaprocessor.models.adata_ops.cell_typing._clustsearch>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops.cell_typing._preprocessing" [color="black", label=<tmaprocessor.models.adata_ops.cell_typing._preprocessing>, shape="box", style="solid"];
+"tmaprocessor.models.adata_ops.cell_typing._subsetter" [color="black", label=<tmaprocessor.models.adata_ops.cell_typing._subsetter>, shape="box", style="solid"];
+"tmaprocessor.models.tma_ops" [color="black", label=<tmaprocessor.models.tma_ops>, shape="box", style="solid"];
+"tmaprocessor.models.tma_ops._tma_model" [color="black", label=<tmaprocessor.models.tma_ops._tma_model>, shape="box", style="solid"];
+"tmaprocessor.readers" [color="black", label=<tmaprocessor.readers>, shape="box", style="solid"];
+"tmaprocessor.readers._csv_to_adata_reader" [color="black", label=<tmaprocessor.readers._csv_to_adata_reader>, shape="box", style="solid"];
+"tmaprocessor.readers._qptiff_reader" [color="black", label=<tmaprocessor.readers._qptiff_reader>, shape="box", style="solid"];
+"tmaprocessor.tests" [color="black", label=<tmaprocessor.tests>, shape="box", style="solid"];
+"tmaprocessor.tests.test_reader" [color="black", label=<tmaprocessor.tests.test_reader>, shape="box", style="solid"];
+"tmaprocessor.tests.test_widgets" [color="black", label=<tmaprocessor.tests.test_widgets>, shape="box", style="solid"];
+"tmaprocessor.widgets" [color="black", label=<tmaprocessor.widgets>, shape="box", style="solid"];
+"tmaprocessor.widgets._adata_ops_widget" [color="black", label=<tmaprocessor.widgets._adata_ops_widget>, shape="box", style="solid"];
+"tmaprocessor.widgets._api_access" [color="black", label=<tmaprocessor.widgets._api_access>, shape="box", style="solid"];
+"tmaprocessor.widgets._spatialdata_utils_widget" [color="black", label=<tmaprocessor.widgets._spatialdata_utils_widget>, shape="box", style="solid"];
+"tmaprocessor.widgets._tma_ops_widget" [color="black", label=<tmaprocessor.widgets._tma_ops_widget>, shape="box", style="solid"];
+"tmaprocessor.widgets._widget_utils" [color="black", label=<tmaprocessor.widgets._widget_utils>, shape="box", style="solid"];
+"tmaprocessor" -> "tmaprocessor.readers._qptiff_reader" [arrowhead="open", arrowtail="none"];
+"tmaprocessor.tests.test_reader" -> "tmaprocessor" [arrowhead="open", arrowtail="none"];
+"tmaprocessor.tests.test_widgets" -> "tmaprocessor.widgets" [arrowhead="open", arrowtail="none"];
+"tmaprocessor.widgets._adata_ops_widget" -> "tmaprocessor.widgets._widget_utils" [arrowhead="open", arrowtail="none"];
+"tmaprocessor.widgets._tma_ops_widget" -> "tmaprocessor.widgets._widget_utils" [arrowhead="open", arrowtail="none"];
+}

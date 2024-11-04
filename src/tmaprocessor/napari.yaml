@@ -1,0 +1,26 @@
+name: tmaprocessor
+display_name: Tissue Microarray Processor
+# use 'hidden' to remove plugin from napari hub search results
+visibility: hidden
+# see https://napari.org/stable/plugins/manifest.html for valid categories
+#categories: ["Annotation", "Segmentation", "Acquisition"]
+contributions:
+  commands:
+    - id: tmaprocessor.get_reader
+      python_name: tmaprocessor.readers._qptiff_reader:napari_get_reader
+      title: Open data with Tissue Microarray Processor
+    - id: tmaprocessor.TMAProcessor
+      python_name: tmaprocessor.widgets._tma_ops_widget:TMAProcessorParentWidget
+      title: tmaprocesser.TMAProcessor
+    - id: tmaprocessor.AnnDataProcessor
+      python_name: tmaprocessor.widgets._adata_ops_widget:AnalysisParentWidget
+      title: tmaprocesser.AnnDataProcessor
+  readers:
+    - command: tmaprocessor.get_reader
+      accepts_directories: false
+      filename_patterns: ['*.qptiff']
+  widgets:
+    - command: tmaprocessor.TMAProcessor
+      display_name: TMAProcessor
+    - command: tmaprocessor.AnnDataProcessor
+      display_name: AnnDataProcessor
