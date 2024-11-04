@@ -13,10 +13,12 @@
 
 ### NOTE: This package is still in heavy development.
 
-Process, dearray and segment multiplexed TMA images.
+An end-to-end, interactive and integrated solution for processing and analysing
+multiplexed tissue microarray images.
 
-This is a package and [napari] plugin designed for the streamlined and 
-interactive processing and analysis of multiplexed tissue microarrays. 
+At its core a Python package and [napari] plugin, harnesses the Python 
+bioimaging and bioinformatics ecosystem to perform highly interactive image 
+processing and analysis of multiplexed tissue microarrays in one user window.
 
 This package uses [spatialdata] as the core data framework, allowing for further
 downstream analysis that is FAIR (findable, accesible, interoperable and
@@ -24,16 +26,12 @@ reusable). To allow for processing and analysis capabilities within an
 interactive GUI window, the package is built on top of [napari] and 
 [napari-spatialdata]. 
 
-Currently, end-to-end capabilities of raw image to analysis are available for
-images generated from the Akoya Phenocycler™-Fusion platform. However, the modular
-structure of the package allows for entry points at any stage of processing and
-analysis given a pre-built SpatialData object using readers from either 
+Currently, end-to-end capabilities are available for images generated from the 
+Akoya Phenocycler™-Fusion platform. However, the modular structure of the 
+package allows for entry points at any stage of processing and analysis given a 
+pre-built SpatialData object using readers from either 
 [spatialdata-io] or [sopa].
 
-----------------------------------
-
-The plugin components of the package were generated with [Cookiecutter] using 
-[@napari]'s [cookiecutter-napari-plugin] template.
 
 <!--
 Don't miss the full getting started guide to set up your new package:
@@ -84,11 +82,10 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 
 ## Citation
 
-**FUTURE-link to bioarxiv
+**tba
 
 
 [napari]: https://github.com/napari/napari
-[Cookiecutter]: https://github.com/audreyr/cookiecutter
 [@napari]: https://github.com/napari
 [MIT]: http://opensource.org/licenses/MIT
 [BSD-3]: http://opensource.org/licenses/BSD-3-Clause
@@ -96,7 +93,6 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [GNU LGPL v3.0]: http://www.gnu.org/licenses/lgpl-3.0.txt
 [Apache Software License 2.0]: http://www.apache.org/licenses/LICENSE-2.0
 [Mozilla Public License 2.0]: https://www.mozilla.org/media/MPL/2.0/index.txt
-[cookiecutter-napari-plugin]: https://github.com/napari/cookiecutter-napari-plugin
 
 [file an issue]: https://github.com/clinicalomx/tmaprocessor/issues
 
