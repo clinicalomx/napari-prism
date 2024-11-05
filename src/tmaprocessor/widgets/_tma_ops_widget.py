@@ -36,7 +36,7 @@ from numpy import ndarray, dtype
 from spatialdata.transformations import get_transformation, Scale, Translation
 from spatialdata.models import ShapesModel
 
-class UtilsNapariWidget(SingleScaleImageNapariWidget):
+class UtilsNapariWidget(MultiScaleImageNapariWidget):
     # TODO:
     # 1) Shapes -> User modifies layer -> Update sdata shapes manually 
     # Shift L and Shift E of the layer does not inherit the scaling factor 
@@ -53,17 +53,17 @@ class UtilsNapariWidget(SingleScaleImageNapariWidget):
         # The model changes when 1) sdata is changed, 2) image_name is changed;
         # These events are trigged by napari_spatialdata.view on layer update
         # When layer is updated -> Get the contained sdata if any;
+        self.update_model()
         self.viewer.layers.selection.events.changed.connect(
             self.update_model)
     
     def create_parameter_widgets(self):
-        super().create_parameter_widgets()
-
         self.add_selected_image_channel_button = create_widget(
             value=False,
             name="Add current view as standalone",
             annotation=bool,
-            widget_type="PushButton")
+            widget_type="PushButton",
+            options=dict(enabled=False))
         
         self.add_selected_image_channel_button.changed.connect(
             self.add_selected_image_channel)
@@ -72,7 +72,8 @@ class UtilsNapariWidget(SingleScaleImageNapariWidget):
             value=False,
             name="Overwrite save selected layer",
             annotation=bool,
-            widget_type="PushButton")
+            widget_type="PushButton",
+            options=dict(enabled=False))
         self.overwrite_save_selected_layer_button.changed.connect(
             self.overwrite_save_selected_layer)
             
@@ -129,7 +130,16 @@ class UtilsNapariWidget(SingleScaleImageNapariWidget):
                     selected.metadata["name"])
                 self.overwrite_save_selected_layer_button.enabled = True
                 self.add_selected_image_channel_button.enabled = False
+            elif isinstance(
+                selected.data, napari.layers._multiscale_data.MultiScaleData):
+                self.model = MultiScaleImageOperations(
+                    selected.metadata["sdata"],
+                    selected.metadata["name"])
+                self.add_selected_image_channel_button.enabled = True
+                self.overwrite_save_selected_layer_button.enabled = False
+                       
             else:
+                self.model = None
                 self.add_selected_image_channel_button.enabled = False
                 self.overwrite_save_selected_layer_button.enabled = False
             
@@ -748,7 +758,7 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             value=0.0,
             name="Cell Probability Threshold",
             annotation=float,
-            options=dict(min=0.0, step=0.01, max=1.0),
+            options=dict(min=-6, step=0.01, max=6.0),
             widget_type="FloatSlider"
         )
 

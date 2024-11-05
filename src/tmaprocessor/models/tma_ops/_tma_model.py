@@ -2071,7 +2071,7 @@ class TMAMeasurer(MultiScaleImageOperations):
         "intensity_mean",
     ]
 
-    EXTENDED_EXPORT_PROPERTIES = EXPORT_PROPERTIES + [
+    EXTENDED_EXPORT_PROPERTIES = [
         "axis_major_length",
         "axis_minor_length",
         "inertia_tensor",
@@ -2106,10 +2106,9 @@ class TMAMeasurer(MultiScaleImageOperations):
             raise ValueError(
                 "Labels and intensity image must have the same shape.")
         
+        properties = self.EXPORT_PROPERTIES
         if extended_properties:
-            properties = self.EXTENDED_EXPORT_PROPERTIES
-        else:
-            properties = self.EXPORT_PROPERTIES
+            properties += self.EXTENDED_EXPORT_PROPERTIES
         
         def intensity_median(mask, intensity_image):
             return np.median(intensity_image[mask], axis=0)
