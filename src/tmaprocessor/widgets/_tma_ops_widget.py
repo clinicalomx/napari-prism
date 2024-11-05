@@ -1020,12 +1020,6 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
             self.disable_function_button()
 
     def measure_labels(self):
-        worker = self._measure_labels()
-        worker.start()
-        worker.finished.connect(self.enable_function_button)
-
-    @thread_worker
-    def _measure_labels(self):
         self.disable_function_button()
         # Validate parameters from widget
         data_sd = None
@@ -1061,6 +1055,12 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
             self.viewer, 
             self._segmentation_layer_selection)
         
+        worker = self._measure_labels(labels, data_sd)
+        worker.start()
+        worker.finished.connect(self.enable_function_button)
+
+    @thread_worker
+    def _measure_labels(self, labels, data_sd):
         self.model.measure_labels(
             labels=labels.data,
             parent_anndata=labels.metadata["adata"],
@@ -1077,7 +1077,6 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
         self.viewer.layers.remove(labels)
         sdata_widget = self.get_sdata_widget()
         sdata_widget._onClick(text=labels.name) # mimick re-adding the layer
-        
         
 class TMAProcessorParentWidget(QTabWidget):
     """ UI tabs. """
