@@ -293,14 +293,14 @@ class AnnDataOperatorWidget(BaseNapariWidget):
     @classmethod
     def refresh_widgets_all_operators(cls):
         """ If called on its own, does not update model, only widgets. """
-        print(f"Refreshing all operators")
+#        print(f"Refreshing all operators")
         for instance in cls._instances:
             instance.reset_choices()
     
     @classmethod
     def update_model_all_operators(cls, adata):
         """ Refreshs all operators after model updates. """
-        print(f"Updating all operators with adata: {adata}")
+#        print(f"Updating all operators with adata: {adata}")
         for instance in cls._instances:
             instance.update_model(adata)
  
@@ -308,7 +308,7 @@ class AnnDataOperatorWidget(BaseNapariWidget):
 
     @classmethod
     def create_model_all_operators(cls, adata):
-        print(f"Creating all operators with adata: {adata}")
+#        print(f"Creating all operators with adata: {adata}")
         for instance in cls._instances:
             instance.create_model(adata)
 
@@ -927,8 +927,8 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
     def update_model(self, adata, emit=True):
         """ Update the Tree; creation / modification"""
-        print(f"Node changed", flush=True)
-        print(adata)
+        #print(f"Node changed", flush=True)
+        #print(adata)
         self.adata = adata
         if emit:
             self.events.adata_changed(value=self.adata)
@@ -1323,7 +1323,7 @@ class QCWidget(AnnDataOperatorWidget):
 
     def local_create_parameter_widgets(self):
         # TODO: left off
-        print("called")
+        #print("called")
         self.clear_local_layout()
 
         if self.qc_selection.value is not None:
@@ -1758,7 +1758,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
         kes = list(self.knn_range_edit.value)
         kes[1] = kes[1] + kes[2]
         ks = [int(x) for x in np.arange(*kes)]
-        print(ks)
+        #print(ks)
 
         res = list(self.resolution_range_edit.value)
         res[1] = res[1] + res[2] # Increment stop by step to include stop
@@ -1766,7 +1766,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
         decimals = decimal.Decimal(str(res[2]))
         est = decimals.as_tuple().exponent * -1 
         rs = [np.round(x, decimals=est) for x in np.arange(*res)]
-        print(rs)
+        #print(rs)
 
         min_size = int(self.min_size_edit.value)
 
@@ -2123,7 +2123,7 @@ class SubclusteringWidget(AnnDataOperatorWidget):
             self.subcluster_button])
 
     def subcluster(self):
-        print("create subcluster pushed", flush=True)
+        #print("create subcluster pushed", flush=True)
         adata_subset = self.adata.copy()
         label = None
         var_suffix = ""

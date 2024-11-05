@@ -338,13 +338,11 @@ class AnnDataNodeQT(QTreeWidgetItem):
 
             # Base case
             if child.childCount() == 0:
-                print(f"{self.text(0)} <- inherit <- {child.text(0)}")
                 # Up/backpropagation
                 self.absorb_child_obs(child)
 
             # Queueing/DFS
             else:
-                print(f"{self.text(0)} -> pass -> {child.text(0)}")
                 child.inherit_children_obs()
                 # After inheriting, if empty, then add
                 if child.childCount() == 0:
