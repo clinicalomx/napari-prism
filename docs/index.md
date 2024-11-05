@@ -12,4 +12,5 @@ contributing.md
 references.md
 
 notebooks/example
+notebooks/getting_started
 ```

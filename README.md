@@ -10,28 +10,24 @@
 [![tests](https://github.com/clinicalomx/tmaprocessor/workflows/tests/badge.svg)](https://github.com/clinicalomx/tmaprocessor/actions)
 [![codecov](https://codecov.io/gh/clinicalomx/tmaprocessor/branch/main/graph/badge.svg)](https://codecov.io/gh/clinicalomx/tmaprocessor)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/tmaprocessor)](https://napari-hub.org/plugins/tmaprocessor)
+[![scverse](https://scverse.org/)]
 
 ### NOTE: This package is still in heavy development.
 
 An end-to-end, interactive and integrated solution for processing and analysing
-multiplexed tissue microarray images.
+multiplexed tissue microarray images in a graphical user interface.
 
-At its core a Python package and [napari] plugin, harnesses the Python 
-bioimaging and bioinformatics ecosystem to perform highly interactive image 
-processing and analysis of multiplexed tissue microarrays in one user window.
+This package uses [spatialdata] as the core data framework, allowing for:
+1) The rich integration of tools from the Python bioinformatics ecosystem ([scverse]) with highly interactive graphical user interfaces in [napari] and [napari-spatialdata].
+2) The storage of images, shapes, annotations and their linked `AnnData` objects in a standardized, FAIR-compliant data structure, combating the non-standard and fragmented organization of files after a multiplexed image analysis pipeline.
 
-This package uses [spatialdata] as the core data framework, allowing for further
-downstream analysis that is FAIR (findable, accesible, interoperable and
-reusable). To allow for processing and analysis capabilities within an
-interactive GUI window, the package is built on top of [napari] and 
-[napari-spatialdata]. 
-
-Currently, end-to-end capabilities are available for images generated from the 
+Currently, end-to-end capabilities (i.e. starting from importing the raw image file) are available for images generated from the 
 Akoya Phenocycler™-Fusion platform. However, the modular structure of the 
 package allows for entry points at any stage of processing and analysis given a 
 pre-built SpatialData object using readers from either 
 [spatialdata-io] or [sopa].
 
+The main priority of the package was to be used completely within the [napari] application, requiring little to no knowledge of Python programming required. As such, support for advanced usage via the API (i.e. within jupyter notebooks) is currently in progress.
 
 <!--
 Don't miss the full getting started guide to set up your new package:
