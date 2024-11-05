@@ -1020,6 +1020,25 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
             self.disable_function_button()
 
     def measure_labels(self):
+        worker = self._measure_labels()
+        worker.start()
+        worker.finished.connect(self.post_measure_labels)
+        worker.finished.connect(self.enable_function_button)
+
+    def post_measure_labels(self):
+        #TODO: after this, the labels layer needs to be updated with the new table sdata
+        # consider; viewermodel.add_sdata_labels | sdataviewer._get_table_data
+        # labels.metadata["sdata"] = self.model.sdata
+        # NOTE: temp sol; delete and re-add the layer
+        labels = get_selected_layer(
+            self.viewer, 
+            self._segmentation_layer_selection)
+        self.viewer.layers.remove(labels)
+        sdata_widget = self.get_sdata_widget()
+        sdata_widget._onClick(text=labels.name) # mimick re-adding the layer
+
+    @thread_worker
+    def _measure_labels(self):
         self.disable_function_button()
         # Validate parameters from widget
         data_sd = None
@@ -1055,12 +1074,6 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
             self.viewer, 
             self._segmentation_layer_selection)
         
-        worker = self._measure_labels(labels, data_sd)
-        worker.start()
-        worker.finished.connect(self.enable_function_button)
-
-    @thread_worker
-    def _measure_labels(self, labels, data_sd):
         self.model.measure_labels(
             labels=labels.data,
             parent_anndata=labels.metadata["adata"],
@@ -1069,15 +1082,7 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
             extended_properties=self._extended_properties_toggle.value,
             intensity_mode=self._intensity_mode_selection.value
             )
-        
-        #TODO: after this, the labels layer needs to be updated with the new table sdata
-        # consider; viewermodel.add_sdata_labels | sdataviewer._get_table_data
-        # labels.metadata["sdata"] = self.model.sdata
-        # NOTE: temp sol; delete and re-add the layer
-        self.viewer.layers.remove(labels)
-        sdata_widget = self.get_sdata_widget()
-        sdata_widget._onClick(text=labels.name) # mimick re-adding the layer
-        
+
 class TMAProcessorParentWidget(QTabWidget):
     """ UI tabs. """
     def __init__(self, viewer: "napari.viewer.Viewer"):
