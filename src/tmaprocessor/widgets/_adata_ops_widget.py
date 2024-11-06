@@ -378,10 +378,14 @@ class AnnDataOperatorWidget(BaseNapariWidget):
             return list(self.adata.layers)
     
     def get_expression_and_obsm_keys(self, widget=None):
+        # Omit spatial.
         if self.adata is None:
             return []
         else:
-            return self.get_expression_layers(widget) + self.get_obsm_keys(widget)
+            keys = self.get_expression_layers(widget) + self.get_obsm_keys(widget)
+            if "spatial" in keys:
+                keys.remove("spatial")
+            return keys
 
     def get_markers(self, widget=None):
         # TODO: maybe rename to get_var_keys
@@ -1729,7 +1733,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
             choices=self.get_expression_and_obsm_keys,
             label="Select an embedding or expression layer",
         )
-        self.expression_selector.scrollable = True
+        self.embedding_selector.scrollable = True
 
         CLUSTER_METHODS = ["phenograph", "scanpy"]
         Opts = Enum("ClusterMethods", CLUSTER_METHODS)

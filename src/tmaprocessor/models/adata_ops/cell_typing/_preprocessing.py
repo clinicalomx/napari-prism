@@ -546,7 +546,7 @@ class AnnDataCollection():
             self.merged.obs = self.merged.obs.reset_index(drop=True)
             assert self.merged.obs.index.nunique() == self.merged.shape[0]
         return self.merged
-
+    
     def check_pca(self, compute: bool, save_plot: str=None):
         """ Check embeddings if batch/diff adatas vary. """
         if self.merged is None:
