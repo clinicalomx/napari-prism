@@ -320,8 +320,18 @@ class AnnDataProcessor():
             getattr(self, transform_name+"_transform")()
         else:
             raise ValueError(f"Invalid transform function: {transform_name}")
-################ TODO 
+    
+    def trim_kwargs(self, function_kwargs, function):
+        """ Trim function_kwargs to only those accepted by function. """
+        return {
+            k: v for k, v in function_kwargs.items() if k in function.__code__.co_varnames}
+
+    def neighbors(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, sc.pp.neighbors)
+        sc.pp.neighbors(self.adata, **kwargs)
+
     def pca(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, sc.tl.pca)
         sc.tl.pca(self.adata, **kwargs)
 
     # def check_pca(self, save_plot: str=None):
@@ -335,12 +345,15 @@ class AnnDataProcessor():
     #         sc.pl.pca(self.adata, color=self.batch_key)
 
     def umap(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, sc.tl.umap)
         sc.tl.umap(self.adata, **kwargs)
 
     def tsne(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, sc.tl.tsne)
         sc.tl.tsne(self.adata, **kwargs)
 
     def harmony(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, sc.external.pp.harmony_integrate)
         sc.external.pp.harmony_integrate(self.adata, **kwargs) #key=self.batch_key, max_iter_harmony=40)
         self.harmonised = True 
 
@@ -399,14 +412,22 @@ class AnnDataProcessorGPU(AnnDataProcessor):
             self.to_CPU()
 
     def pca(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, self.rsc.tl.pca)
         self.check_and_move_to_GPU(self.adata)
         self.rsc.pp.pca(self.adata, **kwargs)
 
+    def neighbors(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, self.rsc.pp.neighbors)
+        self.check_and_move_to_GPU(self.adata)
+        self.rsc.pp.neighbors(self.adata, **kwargs)
+
     def umap(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, self.rsc.tl.umap)
         self.check_and_move_to_GPU(self.adata)
         self.rsc.tl.umap(self.adata, **kwargs)
 
     def tsne(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, self.rsc.tl.tsne)
         self.check_and_move_to_GPU(self.adata)
         self.rsc.tl.tsne(self.adata, **kwargs)
 
@@ -430,6 +451,7 @@ class AnnDataProcessorGPU(AnnDataProcessor):
             sc.pl.pca(self.merged, color=self.batch_key)
     
     def harmony(self, **kwargs):
+        kwargs = self.trim_kwargs(kwargs, self.rsc.pp.harmony_integrate)
         self.rsc.pp.harmony_integrate(
             self.adata, 
             **kwargs)

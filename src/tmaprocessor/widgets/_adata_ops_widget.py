@@ -5,7 +5,7 @@ if TYPE_CHECKING:
     import napari
 import decimal
 from spatialdata import SpatialData
-from magicgui.widgets import create_widget, ComboBox, Select, Table, Container
+from magicgui.widgets import create_widget, ComboBox, Select, Table, Container, Label
 import squidpy as sq
 from anndata import AnnData
 import napari
@@ -1151,6 +1151,7 @@ class QCWidget(AnnDataOperatorWidget):
         self.hist_canvas = None
         self.current_value_directive = None
         self.current_key = "obs"
+        self.current_layer = None
     
     def update_layer(self, layer):
         self.current_layer = layer
@@ -1164,7 +1165,6 @@ class QCWidget(AnnDataOperatorWidget):
             "filter_by_var_quantile": filter_by_var_quantile
         }
         Opts = Enum("QCFunctions", list(self.qc_functions.keys()))
-        iterable_opts = list(Opts)
         
         self.qc_selection = create_widget(
             value=None,
@@ -1444,30 +1444,47 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
     def __init__(self, viewer: "napari.viewer.Viewer", adata):
         self.model = None # Let model handle the functions -> handles CPU/GPU switching
         super().__init__(viewer, adata)
+        self.current_layer = None
+        self.gpu_toggle = None
     
+    def update_layer(self, layer):
+        self.current_layer = layer
+
+    def update_model(self, adata, model=None):
+        self.adata = adata
+        if model is not None:
+            self.model = model
+s
     def create_parameter_widgets(self):
-        self.embedding_functions = {
-            "pca": self.model.pca,
-            "umap": self.model.umap,
-            "tsne": self.model.tsne,
-            "harmonypy": self.model.harmony,
-        }
-        Opts = Enum("QCFunctions", list(self.qc_functions.keys()))
-        iterable_opts = list(Opts)
+        # NOTE: code golf...
+        EMBEDDING_FUNCTIONS = [
+            "pca",
+            "tsne",
+            "neighbors",
+            "umap",
+            "harmonypy",
+        ]
         
-        self.qc_selection = create_widget(
+        self.embedding_functions_selection = ComboBox(
             value=None,
-            name="QC function",
-            widget_type="ComboBox",
-            annotation=Opts,
-            options=dict(
-                nullable=True)
+            name="Scanpy tl/pp function",
+            choices=EMBEDDING_FUNCTIONS,
+            nullable=True
         )
-        self.qc_selection.scrollable = True
-        self.qc_selection.changed.connect(self.local_create_parameter_widgets)
+        self.embedding_functions_selection.scrollable = True
+        self.embedding_functions_selection.changed.connect(
+            self.local_create_parameter_widgets)
+        
+        if gpu_available():
+            self.gpu_toggle = create_widget(
+                value=False,
+                name="Use GPU",
+                annotation=bool
+            )
+            self.extend([self.gpu_toggle])
 
         self.extend([
-            self.qc_selection
+            self.embedding_functions_selection,
         ])
 
     def clear_local_layout(self):
@@ -1477,11 +1494,205 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         for _ in range(layout.count() - 1): 
             layout.itemAt(1).widget().setParent(None)
 
-        if self.hist_canvas is not None:
-            self.hist_canvas.clear()
+    def get_umap_init_pos_choices(self, widget=None):
+        STATIC = [
+            "spectral",
+            "paga",
+            "random"
+        ]
+        if self.adata is None:
+            return STATIC
+        else:
+            return STATIC + self.get_obsm_keys()
 
     def local_create_parameter_widgets(self):
         self.clear_local_layout()
+
+        if self.embedding_functions_selection.value is not None:
+            embedding_function = self.embedding_functions_selection.value
+            
+            # TODO: easier if using some magicgui decorator 
+            if embedding_function == "pca":
+                self.n_components_entry = create_widget(
+                    value=10,
+                    options=dict(
+                        min=1, 
+                        step=1),
+                    name="n_comps",
+                    annotation=int,
+                    widget_type="SpinBox")
+                
+                self.extend([
+                    self.n_components_entry
+                ])
+            
+            elif embedding_function == "tsne":
+                self.n_components_entry = create_widget(
+                    value=10,
+                    options=dict(min=1, step=1),
+                    name="n_pcs",
+                    annotation=int,
+                    widget_type="SpinBox")
+                
+                self.perplexity_entry = create_widget(
+                    value=30,
+                    options=dict(min=1, step=1),
+                    name="perplexity",
+                    annotation=int,
+                    widget_type="SpinBox")
+
+                self.early_exaggeration_entry = create_widget(
+                    value=12,
+                    options=dict(min=1, step=1),
+                    name="early_exaggeration",
+                    annotation=int,
+                    widget_type="SpinBox")
+
+                self.learning_rate_entry = create_widget(
+                    value=1000,
+                    options=dict(min=1, step=1),
+                    name="learning_rate",
+                    annotation=int,
+                    widget_type="SpinBox")
+
+                self.extend([
+                    self.n_components_entry,
+                    self.perplexity_entry,
+                    self.early_exaggeration_entry,
+                    self.learning_rate_entry
+                ])
+
+            elif embedding_function == "neighbors":
+                self.n_neighbors_entry = create_widget(
+                    value=15,
+                    options=dict(min=1, step=1),
+                    name="n_neighbors",
+                    annotation=int,
+                    widget_type="SpinBox")
+                
+                self.n_pcs_entry = create_widget(
+                    value=30,
+                    options=dict(min=1, step=1),
+                    name="n_pcs",
+                    annotation=int,
+                    widget_type="SpinBox")
+                
+                self.algorithm_entry = ComboBox(
+                    value="brute",
+                    name="algorithm",
+                    choices=["brute", "ivfflat", "ivfpq", "cagra"],
+                    label="algorithm")
+
+                self.metric_entry = ComboBox(
+                    value="euclidean",
+                    name="metric",
+                    choices=["euclidean", "manhattan", "cosine"], # truncate to useful ones..
+                    label="metric")
+
+                self.extend([
+                    self.n_neighbors_entry,
+                    self.n_pcs_entry,
+                    self.algorithm_entry,
+                    self.metric_entry
+                ])
+
+            elif embedding_function == "umap":
+                self.min_dist_entry = create_widget(
+                    value=0.5,
+                    options=dict(min=0, step=0.1),
+                    name="min_dist",
+                    annotation=float,
+                    widget_type="SpinBox")
+
+                self.spread_entry = create_widget(
+                    value=1,
+                    options=dict(min=0, step=0.1),
+                    name="spread",
+                    annotation=float,
+                    widget_type="SpinBox")
+                
+                self.alpha_entry = create_widget(
+                    value=1,
+                    options=dict(min=0, step=0.1),
+                    name="alpha",
+                    annotation=float,
+                    widget_type="SpinBox")
+                
+                self.gamma_entry = create_widget(
+                    value=1,
+                    options=dict(min=0, step=0.1),
+                    name="gamma",
+                    annotation=float,
+                    widget_type="SpinBox")
+
+                self.init_pos_entry = ComboBox(
+                    value="spectral",
+                    name="init_pos",
+                    choices=self.get_umap_init_pos_choices,
+                    label="init_pos")
+
+                self.extend([
+                    self.min_dist_entry,
+                    self.spread_entry,
+                    self.alpha_entry,
+                    self.gamma_entry,
+                    self.init_pos_entry
+                ])
+    
+            elif embedding_function == "harmonypy":
+                self.batch_key_selection = ComboBox(
+                    name="key",
+                    choices=self.get_batch_keys,
+                    label="Select a batch key",
+                    value=None,
+                    nullable=True
+                )
+                self.basis_selection = ComboBox(
+                    name="basis",
+                    choices=self.get_obsm_keys,
+                    label="Select a basis key",
+                    value=None,
+                    nullable=True
+                )
+                self.extend([
+                    self.batch_key_selection,
+                    self.basis_selection
+                ])
+
+            else:
+                print("Unchecked embedding function")   
+
+            self.apply_button = create_widget(
+                name="Apply",
+                widget_type="PushButton",
+                annotation=bool
+            )
+            self.apply_button.changed.connect(self._apply_scanpy_function)
+            self.extend([self.apply_button])
+
+    def collect_parameters(self):
+        if self.embedding_functions_selection.value is not None:
+            kwargs =  {
+                widget.name: widget.value for widget in self if widget.name != "Apply"  
+            }
+
+            # Append layer kwarg
+            if self.current_layer is not None:
+                kwargs["layer"] = self.current_layer
+                kwargs["use_rep"] = self.current_layer
+
+            return kwargs
+
+    def _apply_scanpy_function(self):
+        if self.model is not None:
+            scanpy_function = self.embedding_functions_selection.value
+            print(scanpy_function)
+            kwargs = self.collect_parameters()
+            model_func = getattr(self.model, scanpy_function)
+            print(model_func)
+            model_func(**kwargs)
+            # Refresh widgets subscribing to anndata
+            AnnDataOperatorWidget.refresh_widgets_all_operators()
 
 # class AnnDataProcessorEmitter(EventedModel, AnnDataProcessor):
 #     def __init__(self, adata: AnnData):
@@ -1503,7 +1714,7 @@ class PreprocessingWidget(AnnDataOperatorWidget):
     def update_model(self, adata):
         self.adata = adata
         self.model = AnnDataProcessor(adata)
-
+        self.embeddings_tab_cls.update_model(self.adata, self.model)
         # if gpu_available():
         #     self.model = AnnDataProcessorGPU(adata)
         # else:
@@ -1517,8 +1728,9 @@ class PreprocessingWidget(AnnDataOperatorWidget):
     def create_parameter_widgets(self):
         super().create_parameter_widgets()
         
-        # Expression layer; shared
-        
+        # Expression layer from above; shared
+        # self._expression_selector.
+
         # Processing Tabs
         self.processing_tabs = QTabWidget()
         self.native.layout().addWidget(self.processing_tabs)
@@ -1590,48 +1802,58 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             "Quality Control / Filtering"
         )
         
-        self.embeddings_tab = Container()
-        # PCA: -> param: n_components 
-        # TSNE -> also uses n_compoenents, can be used..?
-        # or maybe put this in a tab layout per function..
-        self.pca_n_components_entry = create_widget(
-            value=10,
-            options=dict(min=2, step=1),
-            name="PCA n_components",
-            annotation=int,
-            widget_type="SpinBox")
+        # self.embeddings_tab = Container()
+        # # PCA: -> param: n_components 
+        # # TSNE -> also uses n_compoenents, can be used..?
+        # # or maybe put this in a tab layout per function..
+        # self.pca_n_components_entry = create_widget(
+        #     value=10,
+        #     options=dict(min=2, step=1),
+        #     name="PCA n_components",
+        #     annotation=int,
+        #     widget_type="SpinBox")
                 
-        self.pca_button = create_widget(
-            name="Run PCA",
-            widget_type="PushButton",
-            annotation=bool
-        )
-        self.pca_button.changed.connect(self.run_pca)
-        #TODO: add umap, tsne
+        # self.pca_button = create_widget(
+        #     name="Run PCA",
+        #     widget_type="PushButton",
+        #     annotation=bool
+        # )
+        # self.pca_button.changed.connect(self.run_pca)
+        # #TODO: add umap, tsne
 
-        self.batch_key_selection = ComboBox(
-            name="BatchKeys",
-            choices=self.get_batch_keys,
-            label="Select a batch key",
-        )
-        self.batch_key_selection.scrollable = True
-        self.harmony_button = create_widget(
-            value=False,
-            name="(Optional) Harmonypy by provided batch key",
-            annotation=bool,
-            widget_type="PushButton")
-        self.harmony_button.changed.connect(self.run_harmony)
+        # self.batch_key_selection = ComboBox(
+        #     name="BatchKeys",
+        #     choices=self.get_batch_keys,
+        #     label="Select a batch key",
+        # )
+        # self.batch_key_selection.scrollable = True
+        # self.harmony_button = create_widget(
+        #     value=False,
+        #     name="(Optional) Harmonypy by provided batch key",
+        #     annotation=bool,
+        #     widget_type="PushButton")
+        # self.harmony_button.changed.connect(self.run_harmony)
 
-        self.embeddings_tab.extend(
-            [
-                self.pca_n_components_entry,
-                self.pca_button,
-                self.batch_key_selection,
-                self.harmony_button
-            ]
-        )
+        # self.embeddings_tab.extend(
+        #     [
+        #         self.pca_n_components_entry,
+        #         self.pca_button,
+        #         self.batch_key_selection,
+        #         self.harmony_button
+        #     ]
+        # )
+        # self.processing_tabs.addTab(
+        #     self.embeddings_tab.native,
+        #     "Embeddings"
+        # )
+
+        # test embeddings tab 
+        self.embeddings_tab_cls = ScanpyFunctionWidget(self.viewer, self.adata)
+        self.embeddings_tab_cls.current_layer = self._expression_selector.value
+        self._expression_selector.changed.connect(
+            lambda x: self.embeddings_tab_cls.update_layer(x))
         self.processing_tabs.addTab(
-            self.embeddings_tab.native,
+            self.embeddings_tab_cls.native,
             "Embeddings"
         )
 
@@ -2707,14 +2929,16 @@ class AnalysisParentWidget(QWidget):
         
         self.layout = QVBoxLayout()
         
-        self._adata_selection = ComboBox(
-            name="LayersWithContainedAdata",
-            choices=self.get_adata_in_sdata,
-            label="Select a contained adata",
-        )
-        self._adata_selection.scrollable = True
-        self._adata_selection.changed.connect(self.update_adata_model)
-        self.layout.addWidget(self._adata_selection.native)
+        # self._adata_selection = ComboBox(
+        #     name="LayersWithContainedAdata",
+        #     choices=self.get_adata_in_sdata,
+        #     label="Select a contained adata",
+        # )
+        # self._adata_selection.scrollable = True
+        # self._adata_selection.changed.connect(self.update_adata_model)
+        # self.layout.addWidget(self._adata_selection.native)
+        # Link adata_selection to the Tables annotating layer..
+        
 
         # Parent Data Manager; Hold the memory reference to adatas in this class
         # On creation, empty
