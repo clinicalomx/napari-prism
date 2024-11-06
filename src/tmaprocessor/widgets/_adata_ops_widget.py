@@ -2938,7 +2938,7 @@ class AnalysisParentWidget(QWidget):
         # self._adata_selection.changed.connect(self.update_adata_model)
         # self.layout.addWidget(self._adata_selection.native)
         # Link adata_selection to the Tables annotating layer..
-        
+    
 
         # Parent Data Manager; Hold the memory reference to adatas in this class
         # On creation, empty
@@ -3065,6 +3065,7 @@ class AnalysisParentWidget(QWidget):
         self.meta_sdata[new_selection_label] = new_adata
         self.meta_sdata.write_element(new_selection_label)
         self._adata_selection.reset_choices()
+        
     # def _add_dearrayer(self):
     #     self.dearrayer = TMADearrayerNapariWidget(self.viewer)
     #     self.dearrayer.max_height = 200
