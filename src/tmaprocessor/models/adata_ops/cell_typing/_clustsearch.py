@@ -845,6 +845,7 @@ class HybridPhenographSearch(HybridPhenographModular):
             self, 
             adata,
             ks, 
+            embedding_name="X_pca_harmony",
             algorithm="brute",
             metric="euclidean",
             p=2,
@@ -865,7 +866,6 @@ class HybridPhenographSearch(HybridPhenographModular):
         self._log_current_time()
 
         # Use PCA embeddings as input data 
-        embedding_name = "X_pca_harmony"
         if embedding_name not in adata.obsm:
             if "X_pca" not in adata.obsm:
                 raise ValueError("No PCA embedding found in AnnData.obsm")
@@ -1112,6 +1112,7 @@ class ScanpyClusteringSearch(ScanpyClustering):
             self,
             adata,
             ks,
+            embedding_name="X_pca_harmony",
             n_pcs=None,
             rs=[1],
             random_state=0,
@@ -1123,7 +1124,6 @@ class ScanpyClusteringSearch(ScanpyClustering):
         self._log_current_time("Starting parameter search")
 
         # Use PCA embeddings as input data 
-        embedding_name = "X_pca_harmony"
         if embedding_name not in adata.obsm:
             if "X_pca" not in adata.obsm:
                 self.sc.pp.pca(adata, n_comps=n_pcs)

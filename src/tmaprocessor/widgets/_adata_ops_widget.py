@@ -1,3 +1,4 @@
+import loguru
 from typing import TYPE_CHECKING, List, Literal
 import magicgui
 if TYPE_CHECKING:
@@ -376,6 +377,12 @@ class AnnDataOperatorWidget(BaseNapariWidget):
                 self.adata.layers["loaded_X"] = self.adata.X
             return list(self.adata.layers)
     
+    def get_expression_and_obsm_keys(self, widget=None):
+        if self.adata is None:
+            return []
+        else:
+            return self.get_expression_layers(widget) + self.get_obsm_keys(widget)
+
     def get_markers(self, widget=None):
         # TODO: maybe rename to get_var_keys
         if self.adata is None:
@@ -1242,61 +1249,64 @@ class QCWidget(AnnDataOperatorWidget):
     def update_plot(
         self, 
     ) -> None:
-        if self.current_key == "obs":
-            if self.obs_selection.value in self.get_categorical_obs_keys():
-                data = self.adata.obs[self.obs_selection.value].value_counts()
-            elif self.obs_selection.value in self.get_numerical_obs_keys():
-                data = self.adata.obs[self.obs_selection.value]
-            else:
-                raise ValueError("Unchecked obs key")
-        
-        elif self.current_key == "var":
-            adata_sub = self.adata[:, self.var_selection.value]
-            if self.current_layer is not None:
-                data = adata_sub.layers[self.current_layer]
-            else:
-                if adata_sub.X is not None:
-                    print("No expression layer selected. Using .X")
-                    data = adata_sub.X
+        if self.adata is not None:
+            if self.current_key == "obs":
+                if self.obs_selection.value in self.get_categorical_obs_keys():
+                    data = self.adata.obs[self.obs_selection.value].value_counts()
+                elif self.obs_selection.value in self.get_numerical_obs_keys():
+                    data = self.adata.obs[self.obs_selection.value]
                 else:
-                    raise ValueError("Null expression matrices")
+                    raise ValueError("Unchecked obs key")
             
-        min_val, max_val = int(np.floor(min(data))), int(np.ceil(max(data)))
+            elif self.current_key == "var":
+                adata_sub = self.adata[:, self.var_selection.value]
+                if self.current_layer is not None:
+                    data = adata_sub.layers[self.current_layer]
+                else:
+                    if adata_sub.X is not None:
+                        print("No expression layer selected. Using .X")
+                        data = adata_sub.X
+                    else:
+                        raise ValueError("Null expression matrices")
+            else:
+                raise ValueError("Unchecked current_key")
+            
+            min_val, max_val = int(np.floor(min(data))), int(np.ceil(max(data)))
 
-        if self.current_value_directive == "quantile":
-            self.range_slider.setRange(0, 1)
-            self.range_slider.setValue((0, 1))
-        else:
-            self.range_slider.setRange(min_val, max_val)
-            self.range_slider.setValue((min_val, max_val))
+            if self.current_value_directive == "quantile":
+                self.range_slider.setRange(0, 1)
+                self.range_slider.setValue((0, 1))
+            else:
+                self.range_slider.setRange(min_val, max_val)
+                self.range_slider.setValue((min_val, max_val))
 
-        nbins = 0 # auto
-        if self.nbins_slider is not None:
-            nbins = self.nbins_slider.value()
+            nbins = 0 # auto
+            if self.nbins_slider is not None:
+                nbins = self.nbins_slider.value()
+            
+            vline_min, vline_max = self.range_slider.value()
         
-        vline_min, vline_max = self.range_slider.value()
-    
-        vline_min_label = f"{vline_min:.2f}" #q
-        vline_max_label = f"{vline_max:.2f}" #q
+            vline_min_label = f"{vline_min:.2f}" #q
+            vline_max_label = f"{vline_max:.2f}" #q
 
-        if self.current_value_directive == "quantile":
-            vline_min = np.quantile(data, vline_min)
-            vline_max = np.quantile(data, vline_max)
+            if self.current_value_directive == "quantile":
+                vline_min = np.quantile(data, vline_min)
+                vline_max = np.quantile(data, vline_max)
 
-            vline_min_label += f" ({vline_min:.2f})" #q (value)
-            vline_max_label += f" ({vline_max:.2f})" #q (value)
+                vline_min_label += f" ({vline_min:.2f})" #q (value)
+                vline_max_label += f" ({vline_max:.2f})" #q (value)
 
-        self.hist_canvas.plot(
-            data=data,
-            nbins=nbins,
-            figsize=(5, 5),
-            min_val=min_val,
-            max_val=max_val,
-            vline_min=vline_min,
-            vline_max=vline_max,
-            vline_min_label=vline_min_label,
-            vline_max_label=vline_max_label
-        )
+            self.hist_canvas.plot(
+                data=data,
+                nbins=nbins,
+                figsize=(5, 5),
+                min_val=min_val,
+                max_val=max_val,
+                vline_min=vline_min,
+                vline_max=vline_max,
+                vline_min_label=vline_min_label,
+                vline_max_label=vline_max_label
+            )
         
     # qc by region -> cell count
     def _apply_qc(self):
@@ -1426,6 +1436,49 @@ class QCWidget(AnnDataOperatorWidget):
         if self.obs_selection is not None or self.var_selection is not None:
             self.update_plot()
 
+class ScanpyFunctionWidget(AnnDataOperatorWidget):
+    def __init__(self, viewer: "napari.viewer.Viewer", adata):
+        self.model = None # Let model handle the functions -> handles CPU/GPU switching
+        super().__init__(viewer, adata)
+    
+    def create_parameter_widgets(self):
+        self.embedding_functions = {
+            "pca": self.model.pca,
+            "umap": self.model.umap,
+            "tsne": self.model.tsne,
+            "harmonypy": self.model.harmony,
+        }
+        Opts = Enum("QCFunctions", list(self.qc_functions.keys()))
+        iterable_opts = list(Opts)
+        
+        self.qc_selection = create_widget(
+            value=None,
+            name="QC function",
+            widget_type="ComboBox",
+            annotation=Opts,
+            options=dict(
+                nullable=True)
+        )
+        self.qc_selection.scrollable = True
+        self.qc_selection.changed.connect(self.local_create_parameter_widgets)
+
+        self.extend([
+            self.qc_selection
+        ])
+
+    def clear_local_layout(self):
+        layout = self.native.layout()
+        # dont remove the first
+        # Remove first item continually until the last
+        for _ in range(layout.count() - 1): 
+            layout.itemAt(1).widget().setParent(None)
+
+        if self.hist_canvas is not None:
+            self.hist_canvas.clear()
+
+    def local_create_parameter_widgets(self):
+        self.clear_local_layout()
+
 # class AnnDataProcessorEmitter(EventedModel, AnnDataProcessor):
 #     def __init__(self, adata: AnnData):
 #         super().__init__(adata)
@@ -1533,9 +1586,10 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             "Quality Control / Filtering"
         )
         
-
-        self.dimred_tab = Container()
+        self.embeddings_tab = Container()
         # PCA: -> param: n_components 
+        # TSNE -> also uses n_compoenents, can be used..?
+        # or maybe put this in a tab layout per function..
         self.pca_n_components_entry = create_widget(
             value=10,
             options=dict(min=2, step=1),
@@ -1564,7 +1618,7 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             widget_type="PushButton")
         self.harmony_button.changed.connect(self.run_harmony)
 
-        self.dimred_tab.extend(
+        self.embeddings_tab.extend(
             [
                 self.pca_n_components_entry,
                 self.pca_button,
@@ -1573,8 +1627,8 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             ]
         )
         self.processing_tabs.addTab(
-            self.dimred_tab.native,
-            "Dimensionality Reduction"
+            self.embeddings_tab.native,
+            "Embeddings"
         )
 
     def get_batch_keys(self, widget=None):
@@ -1596,7 +1650,8 @@ class PreprocessingWidget(AnnDataOperatorWidget):
     @thread_worker
     def _pca(self): # Need to add param for layer 
         self.pca_button.enabled = False
-        self.model.pca(n_comps=int(self.pca_n_components_entry.value))
+        self.model.pca(
+            n_comps=int(self.pca_n_components_entry.value))
         self.pca_button.enabled = True
 
     def run_pca(self):
@@ -1668,6 +1723,13 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
                 self._expression_selector.scrollable = True
                 self.extend([self._expression_selector])
         """ 
+        # user selects layers
+        self.embedding_selector = ComboBox(
+            name="EmbeddingLayers",
+            choices=self.get_expression_and_obsm_keys,
+            label="Select an embedding or expression layer",
+        )
+        self.expression_selector.scrollable = True
 
         CLUSTER_METHODS = ["phenograph", "scanpy"]
         Opts = Enum("ClusterMethods", CLUSTER_METHODS)
@@ -1710,6 +1772,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
 
         self.extend(
             [
+                self.embedding_selector,
                 self.cluster_method_list,
                 self.knn_range_edit,
                 self.resolution_range_edit,
@@ -1753,7 +1816,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
 
         # Validate knns
         if self.knn_range_edit.value[0] < 2:
-            raise ValueError("Minimum number of neighbors for KNN is 2.")
+            loguru.logger.warning("KNN minimum less than 2. Setting to 2.")
         
         kes = list(self.knn_range_edit.value)
         kes[1] = kes[1] + kes[2]
@@ -1774,6 +1837,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
         try:
             self.adata = self.model.parameter_search(
                 self.adata,
+                embedding_name=self.embedding_selector.value,
                 ks=ks,
                 rs=rs,
                 min_size=min_size)
@@ -1792,6 +1856,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
 
     # Experimental; future; model classes for each comp step have Dask Schedulers
     # to submti run jobs on slurm
+    # useful for GPU scheduling jobs from an interactive job
     def _param_search_slurm(self):
         pass
 

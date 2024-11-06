@@ -324,23 +324,24 @@ class AnnDataProcessor():
     def pca(self, **kwargs):
         sc.tl.pca(self.adata, **kwargs)
 
-    def check_pca(self, save_plot: str=None):
-        """ Check embeddings if batch/diff adatas vary. """
-        if "X_pca" not in self.adata.obsm:
-            sc.tl.pca(self.adata)
+    # def check_pca(self, save_plot: str=None):
+    #     """ Check embeddings if batch/diff adatas vary. """
+    #     if "X_pca" not in self.adata.obsm:
+    #         sc.tl.pca(self.adata)
         
-        if save_plot:
-            sc.pl.pca(self.adata, color=self.batch_key, save=save_plot)
-        else:
-            sc.pl.pca(self.adata, color=self.batch_key)
+    #     if save_plot:
+    #         sc.pl.pca(self.adata, color=self.batch_key, save=save_plot)
+    #     else:
+    #         sc.pl.pca(self.adata, color=self.batch_key)
 
-    def check_umap():
-        pass
+    def umap(self, **kwargs):
+        sc.tl.umap(self.adata, **kwargs)
+
+    def tsne(self, **kwargs):
+        sc.tl.tsne(self.adata, **kwargs)
 
     def harmony(self, **kwargs):
         sc.external.pp.harmony_integrate(self.adata, **kwargs) #key=self.batch_key, max_iter_harmony=40)
-        self.adata.obsm["X_pca_original"] = self.adata.obsm["X_pca"]
-        self.adata.obsm["X_pca"] = self.adata.obsm["X_pca_harmony"]
         self.harmonised = True 
 
     def get_GPU_version(self):
@@ -401,6 +402,14 @@ class AnnDataProcessorGPU(AnnDataProcessor):
         self.check_and_move_to_GPU(self.adata)
         self.rsc.pp.pca(self.adata, **kwargs)
 
+    def umap(self, **kwargs):
+        self.check_and_move_to_GPU(self.adata)
+        self.rsc.tl.umap(self.adata, **kwargs)
+
+    def tsne(self, **kwargs):
+        self.check_and_move_to_GPU(self.adata)
+        self.rsc.tl.tsne(self.adata, **kwargs)
+
     def check_pca(self, compute: bool, save_plot: str=None):
         """ Overloaded. Performs pca with rapids_singlecell / cuml backend. """
         if self.merged is None:
@@ -424,9 +433,6 @@ class AnnDataProcessorGPU(AnnDataProcessor):
         self.rsc.pp.harmony_integrate(
             self.adata, 
             **kwargs)
-        
-        self.adata.obsm["X_pca_original"] = self.adata.obsm["X_pca"]
-        self.adata.obsm["X_pca"] = self.adata.obsm["X_pca_harmony"]
         self.harmonised = True 
         
     def get_CPU_version(self):
