@@ -27,6 +27,7 @@ The package was designed to be used completely within the [napari] application a
 ## Installation
 
 Install this package via [pip]:
+
 ```bash
 pip install napari-prism
 ```
