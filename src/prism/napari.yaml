@@ -1,0 +1,31 @@
+name: prism
+display_name: napari prism
+# use 'hidden' to remove plugin from napari hub search results
+visibility: hidden
+# see https://napari.org/stable/plugins/manifest.html for valid categories
+#categories: ["Annotation", "Segmentation", "Acquisition"]
+contributions:
+  commands:
+    - id: prism.get_reader
+      python_name: prism.readers._readers:napari_get_reader
+      title: Open data with prism
+
+    - id: prism.TMAImageAnalysis
+      python_name: prism.widgets._tma_ops_widget:TMAImageAnalysisParentWidget
+      title: prism.TMAImageAnalysis
+
+    - id: prism.AnnDataAnalysis
+      python_name: prism.widgets._adata_ops_widget:AnnDataAnalysisParentWidget
+      title: prism.AnnDataAnalysis
+
+  readers:
+    - command: prism.get_reader
+      accepts_directories: true
+      filename_patterns: ["*.qptiff", "*.zarr"]
+
+  widgets:
+    - command: prism.TMAImageAnalysis
+      display_name: TMA Image Analysis
+
+    - command: prism.AnnDataAnalysis
+      display_name: AnnData Analysis

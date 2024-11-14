@@ -1,0 +1,35 @@
+digraph "packages" {
+rankdir=BT
+charset="utf-8"
+"prism" [color="black", label=<prism>, shape="box", style="solid"];
+"prism.models" [color="black", label=<prism.models>, shape="box", style="solid"];
+"prism.models._utils" [color="black", label=<prism.models._utils>, shape="box", style="solid"];
+"prism.models.adata_ops" [color="black", label=<prism.models.adata_ops>, shape="box", style="solid"];
+"prism.models.adata_ops._anndata_helpers" [color="black", label=<prism.models.adata_ops._anndata_helpers>, shape="box", style="solid"];
+"prism.models.adata_ops.cell_typing" [color="black", label=<prism.models.adata_ops.cell_typing>, shape="box", style="solid"];
+"prism.models.adata_ops.cell_typing._augmentation" [color="black", label=<prism.models.adata_ops.cell_typing._augmentation>, shape="box", style="solid"];
+"prism.models.adata_ops.cell_typing._clustannot" [color="black", label=<prism.models.adata_ops.cell_typing._clustannot>, shape="box", style="solid"];
+"prism.models.adata_ops.cell_typing._clusteval" [color="black", label=<prism.models.adata_ops.cell_typing._clusteval>, shape="box", style="solid"];
+"prism.models.adata_ops.cell_typing._clustsearch" [color="black", label=<prism.models.adata_ops.cell_typing._clustsearch>, shape="box", style="solid"];
+"prism.models.adata_ops.cell_typing._preprocessing" [color="black", label=<prism.models.adata_ops.cell_typing._preprocessing>, shape="box", style="solid"];
+"prism.models.adata_ops.cell_typing._subsetter" [color="black", label=<prism.models.adata_ops.cell_typing._subsetter>, shape="box", style="solid"];
+"prism.models.tma_ops" [color="black", label=<prism.models.tma_ops>, shape="box", style="solid"];
+"prism.models.tma_ops._tma_model" [color="black", label=<prism.models.tma_ops._tma_model>, shape="box", style="solid"];
+"prism.readers" [color="black", label=<prism.readers>, shape="box", style="solid"];
+"prism.readers._csv_to_adata_reader" [color="black", label=<prism.readers._csv_to_adata_reader>, shape="box", style="solid"];
+"prism.readers._readers" [color="black", label=<prism.readers._readers>, shape="box", style="solid"];
+"prism.tests" [color="black", label=<prism.tests>, shape="box", style="solid"];
+"prism.tests.test_reader" [color="black", label=<prism.tests.test_reader>, shape="box", style="solid"];
+"prism.tests.test_widgets" [color="black", label=<prism.tests.test_widgets>, shape="box", style="solid"];
+"prism.widgets" [color="black", label=<prism.widgets>, shape="box", style="solid"];
+"prism.widgets._adata_ops_widget" [color="black", label=<prism.widgets._adata_ops_widget>, shape="box", style="solid"];
+"prism.widgets._api_access" [color="black", label=<prism.widgets._api_access>, shape="box", style="solid"];
+"prism.widgets._spatialdata_utils_widget" [color="black", label=<prism.widgets._spatialdata_utils_widget>, shape="box", style="solid"];
+"prism.widgets._tma_ops_widget" [color="black", label=<prism.widgets._tma_ops_widget>, shape="box", style="solid"];
+"prism.widgets._widget_utils" [color="black", label=<prism.widgets._widget_utils>, shape="box", style="solid"];
+"prism" -> "prism.readers._readers" [arrowhead="open", arrowtail="none"];
+"prism.tests.test_reader" -> "prism" [arrowhead="open", arrowtail="none"];
+"prism.tests.test_widgets" -> "prism.widgets" [arrowhead="open", arrowtail="none"];
+"prism.widgets._adata_ops_widget" -> "prism.widgets._widget_utils" [arrowhead="open", arrowtail="none"];
+"prism.widgets._tma_ops_widget" -> "prism.widgets._widget_utils" [arrowhead="open", arrowtail="none"];
+}
