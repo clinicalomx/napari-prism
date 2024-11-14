@@ -12,17 +12,18 @@
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-prism)](https://napari-hub.org/plugins/napari-prism)
 
 **NOTE: PRISM is still in heavy development.**
-PRISM uses [spatialdata] as the core data framework, allowing for:
-
-1. The rich integration of tools from the ([scverse]) Python bioinformatics ecosystem with highly interactive graphical user interfaces from [napari] and [napari-spatialdata].
-2. The storage of images, shapes, annotations and their linked `AnnData` objects in a standardized, FAIR-compliant data structure, addressing the non-standard and fragmented organization of files before, during, and after a multiplexed image analysis pipeline.
+PRISM or napari-prism is a package and [napari] plugin designed for interactive processing, analysing and visualising multiplxed tissue microarrays.
 
 Currently, end-to-end capabilities (i.e. starting from importing the raw image file, to basic spatial analysis of annotated cells) are available for images generated from the
 Akoya Phenocycler™-Fusion platform. However, the modular structure of the
 package allows for usage at any stage of processing and/or analysis, given a pre-built SpatialData object using readers from either
 [spatialdata-io] or [sopa].
 
-The package was designed to be used completely within the [napari] application and therefore require little to no knowledge of Python programming. Because of this, documentation for usage via the API is currently in progress.
+PRISM uses [spatialdata] as the core data framework, allowing for:
+1. The rich integration of tools from the ([scverse]) Python bioinformatics ecosystem with highly interactive graphical user interfaces from [napari] and [napari-spatialdata].
+2. The storage of images, shapes, annotations and their linked `AnnData` objects in a standardized, FAIR-compliant data structure, addressing the non-standard and fragmented organization of files before, during, and after a multiplexed image analysis pipeline.
+
+The package was designed to be used completely within the [napari] application and therefore require little to no knowledge of Python programming. Therefore, documentation for usage via the API is currently in progress.
 
 ## Installation
 
