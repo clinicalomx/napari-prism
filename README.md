@@ -20,6 +20,7 @@ package allows for usage at any stage of processing and/or analysis, given a pre
 [spatialdata-io] or [sopa].
 
 PRISM uses [spatialdata] as the core data framework, allowing for:
+
 1. The rich integration of tools from the ([scverse]) Python bioinformatics ecosystem with highly interactive graphical user interfaces from [napari] and [napari-spatialdata].
 2. The storage of images, shapes, annotations and their linked `AnnData` objects in a standardized, FAIR-compliant data structure, addressing the non-standard and fragmented organization of files before, during, and after a multiplexed image analysis pipeline.
 
