@@ -27,12 +27,12 @@ from napari_prism.models.adata_ops.cell_typing._clustsearch import (
 )
 from napari_prism.models.adata_ops.cell_typing._preprocessing import (
     AnnDataProcessor,
-    get_GPU_version,
     filter_by_obs_count,
     filter_by_obs_quantile,
     filter_by_obs_value,
     filter_by_var_quantile,
     filter_by_var_value,
+    get_GPU_version,
 )
 from napari_prism.models.adata_ops.cell_typing._subsetter import AnnDataNodeQT
 from napari_prism.widgets._widget_utils import (

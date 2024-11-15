@@ -9,7 +9,12 @@ from anndata import AnnData
 
 class ClusteringSearchEvaluator:
     """Assess 'quality' of clusteriung results from a clustering search."""
-    IMPLEMENTED_SEARCHERS = ["ScanpyClusteringSearch", "HybridPhenographSearch"]
+
+    IMPLEMENTED_SEARCHERS = [
+        "ScanpyClusteringSearch",
+        "HybridPhenographSearch",
+    ]
+
     def __init__(
         self,
         adata: AnnData,

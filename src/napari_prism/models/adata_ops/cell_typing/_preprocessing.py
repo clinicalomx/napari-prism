@@ -438,6 +438,7 @@ class AnnDataProcessor:
         )  # key=self.batch_key, max_iter_harmony=40)
         self.harmonised = True
 
+
 class AnnDataProcessorGPU(AnnDataProcessor):
     """GPU (rapids_singlecell) backend of AnnDataProcessor."""
 
@@ -523,6 +524,7 @@ class AnnDataProcessorGPU(AnnDataProcessor):
         adata_processor_cpu.harmonised = self.harmonised
         return adata_processor_cpu
 
+
 def get_GPU_version(self, init_model: AnnDataProcessor) -> AnnDataProcessorGPU:
     """Returns a copy of the Processor object but with a GPU
     (rapids_singlecell / RAPIDS) backend."""
@@ -530,6 +532,7 @@ def get_GPU_version(self, init_model: AnnDataProcessor) -> AnnDataProcessorGPU:
     adata_processor_gpu.applied_funcs = init_model.applied_funcs
     adata_processor_gpu.harmonised = init_model.harmonised
     return adata_processor_gpu
+
 
 ####################
 

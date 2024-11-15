@@ -10,7 +10,9 @@ from scipy.sparse import csr_matrix
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.neighbors import NearestNeighbors
 
-from napari_prism.models.adata_ops.spatial_analysis._utils import symmetrise_graph
+from napari_prism.models.adata_ops.spatial_analysis._utils import (
+    symmetrise_graph,
+)
 
 
 # Pairwise Cell Computations
