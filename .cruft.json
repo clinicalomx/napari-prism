@@ -4,8 +4,8 @@
   "checkout": null,
   "context": {
     "cookiecutter": {
-      "project_name": "prism",
-      "package_name": "prism",
+      "project_name": "napari-prism",
+      "package_name": "napari-prism",
       "project_description": "tba",
       "author_full_name": "Rafael Tubelleza",
       "author_email": "rafaelrtubelleza@gmail.com",

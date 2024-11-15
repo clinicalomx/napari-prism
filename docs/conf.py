@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath("../src"))
 
 # NOTE: If you installed your project in editable mode, this might be stale.
 #       If this is the case, reinstall it to refresh the metadata
-info = metadata("prism")  # Local name -> prism
+info = metadata("napari-prism")
 project_name = info["Name"]
 author = info["Author"]
 copyright = f"{datetime.now():%Y}, {author}."  # noqa A001

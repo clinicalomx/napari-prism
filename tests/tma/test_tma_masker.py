@@ -1,8 +1,8 @@
 import pytest
 from spatialdata import SpatialData
 
-from prism.models.tma_ops._tma_image import TMAMasker
-from prism.widgets.tma_ops._tma_image_widgets import TMAMaskerNapariWidget
+from napari_prism.models.tma_ops._tma_image import TMAMasker
+from napari_prism.widgets.tma_ops._tma_image_widgets import TMAMaskerNapariWidget
 
 # inputs -> Sdta image_name, reference_coordinate_system
 WIDGET_LIST = [

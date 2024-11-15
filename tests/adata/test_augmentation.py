@@ -1,6 +1,6 @@
 from typing import Any
 
-from prism.models.adata_ops.cell_typing._augmentation import (
+from napari_prism.models.adata_ops.cell_typing._augmentation import (
     add_obs_as_var,
     subset_adata_by_var,
 )

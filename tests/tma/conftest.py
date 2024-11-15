@@ -12,8 +12,8 @@ from spatialdata.datasets import blobs
 from spatialdata.models import Image2DModel, Labels2DModel
 from xarray import DataArray
 
-from prism.models.tma_ops._tma_image import SdataImageOperations
-from prism.widgets.tma_ops._base_widgets import SdataImageNapariWidget
+from napari_prism.models.tma_ops._tma_image import SdataImageOperations
+from napari_prism.widgets.tma_ops._base_widgets import SdataImageNapariWidget
 
 DEFAULT_COORDS = ("y", "x")
 

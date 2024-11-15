@@ -1,4 +1,4 @@
-from prism.models.adata_ops.cell_typing._clustsearch import (
+from napari_prism.models.adata_ops.cell_typing._clustsearch import (
     HybridPhenographSearch,
 )
 

@@ -1,0 +1,27 @@
+name: napari-prism
+display_name: napari prism
+contributions:
+  commands:
+    - id: napari-prism.get_reader
+      python_name: napari_prism.readers._readers:napari_get_reader
+      title: Open data with napari-prism
+
+    - id: napari-prism.TMAImageAnalysis
+      python_name: napari_prism.widgets._tma_ops_widget:TMAImageAnalysisParentWidget
+      title: napari-prism.TMAImageAnalysis
+
+    - id: napari-prism.AnnDataAnalysis
+      python_name: napari_prism.widgets._adata_ops_widget:AnnDataAnalysisParentWidget
+      title: napari-prism.AnnDataAnalysis
+
+  readers:
+    - command: napari-prism.get_reader
+      accepts_directories: true
+      filename_patterns: ["*.qptiff", "*.zarr"]
+
+  widgets:
+    - command: napari-prism.TMAImageAnalysis
+      display_name: TMA Image Analysis
+
+    - command: napari-prism.AnnDataAnalysis
+      display_name: AnnData Analysis
