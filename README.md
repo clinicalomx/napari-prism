@@ -43,17 +43,20 @@ pip install git+https://github.com/clinicalomx/napari-prism.git@main
 ## Installation: GPU-accelerated
 
 ### General computations with RAPIDS and rapids-singlecell
+
 General larger scale and/or computationally demanding functions can be accelerated with the [NVIDIA RAPIDS suite](https://rapids.ai/). We utilise some packages from this suite, as well as the GPU-accelerated implementation of scanpy with [rapids-singlecell].
 
 1. [Check and configure the system requirements from RAPIDS](https://docs.rapids.ai/install/#system-req).
-   - Currently, only Linux distributions (or Windows systems with WSL2) are supported.
-   - Install the [CUDA12.2](https://developer.nvidia.com/cuda-12-2-2-download-archive) or [CUDA12.5](https://developer.nvidia.com/cuda-12-5-1-download-archive) toolkit.
+    - Currently, only Linux distributions (or Windows systems with WSL2) are supported.
+    - Install the [CUDA12.2](https://developer.nvidia.com/cuda-12-2-2-download-archive) or [CUDA12.5](https://developer.nvidia.com/cuda-12-5-1-download-archive) toolkit.
 2. Install the package together with [RAPIDS] and [rapids-singlecell] via [pip]:
+
 ```bash
 pip install napari-prism[gpu] --extra-index-url=https://pypi.nvidia.com
 ```
 
 ### Cell segmentation with Cellpose
+
 To run [cellpose] on the GPU, install the [CUDA version of PyTorch](https://pytorch.org/get-started/locally/). You may need to [remove any installed CPU versions of PyTorch](https://github.com/MouseLand/cellpose?tab=readme-ov-file#gpu-version-cuda-on-windows-or-linux).
 
 ## Getting Started
