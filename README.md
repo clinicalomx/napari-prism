@@ -26,7 +26,7 @@ PRISM uses [spatialdata] as the core data framework, allowing for:
 
 The package was designed to be used completely within the [napari] application and therefore require little to no knowledge of Python programming. Therefore, documentation for usage via the API is currently in progress.
 
-## Installation
+## Installation: CPU only
 
 Install this package via [pip]:
 
@@ -40,17 +40,29 @@ Install the latest development version:
 pip install git+https://github.com/clinicalomx/napari-prism.git@main
 ```
 
+## Installation: GPU-accelerated
+
+### General computations with RAPIDS and rapids-singlecell
+General larger scale and/or computationally demanding functions can be accelerated with the [NVIDIA RAPIDS suite](https://rapids.ai/). We utilise some packages from this suite, as well as the GPU-accelerated implementation of scanpy with [rapids-singlecell].
+
+1. [Check and configure the system requirements from RAPIDS](https://docs.rapids.ai/install/#system-req).
+   - Currently, only Linux distributions (or Windows systems with WSL2) are supported.
+   - Install the [CUDA12.2](https://developer.nvidia.com/cuda-12-2-2-download-archive) or [CUDA12.5](https://developer.nvidia.com/cuda-12-5-1-download-archive) toolkit.
+2. Install the package together with [RAPIDS] and [rapids-singlecell] via [pip]:
+```bash
+pip install napari-prism[gpu] --extra-index-url=https://pypi.nvidia.com
+```
+
+### Cell segmentation with Cellpose
+To run [cellpose] on the GPU, install the [CUDA version of PyTorch](https://pytorch.org/get-started/locally/). You may need to [remove any installed CPU versions of PyTorch](https://github.com/MouseLand/cellpose?tab=readme-ov-file#gpu-version-cuda-on-windows-or-linux).
+
 ## Getting Started
 
-To start using `PRISM`, please see the [tutorials](https://napari-prism.readthedocs.io/en/latest/notebooks/getting_started.html#):
+To start using `napari-prism`, please see the [tutorials](https://napari-prism.readthedocs.io/en/latest/notebooks/getting_started.html#):
 
 -   [Getting started](https://napari-prism.readthedocs.io/en/latest/notebooks/getting_started.html)
 -   To learn how to interactively analyse raw .qptiff TMAs, see [TMA Image Analysis](https://napari-prism.readthedocs.io/en/latest/notebooks/tma_usage.html)
 -   To learn how to interactively analyse AnnData-contained SpatialData objects, see [Anndata Analysis](https://napari-prism.readthedocs.io/en/latest/notebooks/adata_usage.html)
-
-## GPU Acceleration
-
-\*\*In-progress/Testing
 
 ## Contributing
 
@@ -82,6 +94,10 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
+[PyTorch]: https://pytorch.org/
+[cellpose]: https://github.com/MouseLand/cellpose
+[RAPIDS]: https://rapids.ai/
+[rapids-singlecell]: https://github.com/scverse/rapids_singlecell
 [spatialdata]: https://github.com/scverse/spatialdata/tree/main
 [napari-spatialdata]: https://github.com/scverse/napari-spatialdata/tree/main
 [spatialdata-io]: https://github.com/scverse/spatialdata-io
