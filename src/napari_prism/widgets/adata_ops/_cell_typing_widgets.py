@@ -27,6 +27,7 @@ from napari_prism.models.adata_ops.cell_typing._clustsearch import (
 )
 from napari_prism.models.adata_ops.cell_typing._preprocessing import (
     AnnDataProcessor,
+    AnnDataProcessorGPU,
     filter_by_obs_count,
     filter_by_obs_quantile,
     filter_by_obs_value,
@@ -36,6 +37,7 @@ from napari_prism.models.adata_ops.cell_typing._preprocessing import (
 )
 from napari_prism.models.adata_ops.cell_typing._subsetter import AnnDataNodeQT
 from napari_prism.widgets._widget_utils import (
+    gpu_available,
     BaseNapariWidget,
     EditableTable,
     RangeEditFloat,
@@ -814,15 +816,15 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         self.processing_tabs.addTab(self.transform_tab.native, "Transforms")
 
         # Conditionally create thhis widget based on gpu availability
-        # self.gpu_toggle_button = None
-        # if gpu_available():
-        #     self.gpu_toggle_button = create_widget(
-        #         value=False,
-        #         name="Use GPU",
-        #         annotation=bool
-        #     )
-        #     self.gpu_toggle_button.changed.connect(self._gpu_toggle)
-        #     self.extend([self.gpu_toggle_button])
+        self.gpu_toggle_button = None
+        if gpu_available():
+            self.gpu_toggle_button = create_widget(
+                value=False,
+                name="Use GPU",
+                annotation=bool
+            )
+            self.gpu_toggle_button.changed.connect(self._gpu_toggle)
+            self.extend([self.gpu_toggle_button])
 
         # Data QC Tabs
         self.qc_tab = QCWidget(self.viewer, self.adata)
