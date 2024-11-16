@@ -13,6 +13,7 @@ from qtpy.QtWidgets import QAction, QMenu, QTabWidget, QTreeWidget
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
+from napari_prism import pp  # refactored preprocessing class to funcs only
 from napari_prism.models.adata_ops.cell_typing._augmentation import (
     add_obs_as_var,
     subset_adata_by_var,
@@ -24,7 +25,6 @@ from napari_prism.models.adata_ops.cell_typing._clustsearch import (
     HybridPhenographSearch,
     ScanpyClusteringSearch,
 )
-from napari_prism import pp # refactored preprocessing class to funcs only
 from napari_prism.models.adata_ops.cell_typing._subsetter import AnnDataNodeQT
 from napari_prism.widgets._widget_utils import (
     BaseNapariWidget,
@@ -42,6 +42,7 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
     ScanpyFunctionWidget,
     ScanpyPlotWidget,
 )
+
 
 class AnnDataSubsetterWidget(BaseNapariWidget):
     """Widget for subsetting anndata objects. Holds a QTreeWidget for
@@ -825,7 +826,8 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             )
             self.gpu_toggle_button.changed.connect(self._gpu_toggle)
             self.gpu_toggle_button.changed.connect(
-                self.embeddings_tab_cls.gpu_toggle)
+                self.embeddings_tab_cls.gpu_toggle
+            )
             self.extend([self.gpu_toggle_button])
 
     def _gpu_toggle(self) -> None:
@@ -855,6 +857,7 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         transform_label += self._expression_selector.value
         self.adata.layers[transform_label] = self.adata.X
         AnnDataOperatorWidget.refresh_widgets_all_operators()
+
 
 class ClusterSearchWidget(AnnDataOperatorWidget):
     """Widget for performing multiple clustering runs of AnnData objects over
@@ -1104,14 +1107,16 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
             self.cc_heatmap.ks_selection.reset_choices
         )  # address in future
         self.plot_tabs.addTab(self.cc_heatmap, "Between-Cluster Score Plots")
-        
+
         # tbl = {
         #         label_name: labels,
         #         self.DEFAULT_ANNOTATION_NAME: [None]
         #         * len(labels),  # Make header editable
         #     }
         self.modularity_table = Table()
-        self.plot_tabs.addTab(self.modularity_table.native, "Modularity Scores")
+        self.plot_tabs.addTab(
+            self.modularity_table.native, "Modularity Scores"
+        )
         # K/R selection
         self.kr_selection = Container(layout="horizontal", labels=True)
         self.k_selection = ComboBox(

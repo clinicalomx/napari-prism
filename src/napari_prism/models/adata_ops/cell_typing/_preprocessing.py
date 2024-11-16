@@ -1,17 +1,19 @@
 """.pp module"""
+
+import importlib
 from collections.abc import Callable
 from functools import wraps
-from typing import Optional, Literal
+from typing import Literal, Optional
+
 import loguru
-import anndata as ad
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
 from anndata import AnnData
-import importlib
 
 _current_backend = {"module": "scanpy"}
 sc_backend = importlib.import_module(_current_backend["module"])
+
 
 def set_backend(backend: Literal["cpu", "gpu"]) -> None:
     """Set the backend to use for processing."""
@@ -21,7 +23,8 @@ def set_backend(backend: Literal["cpu", "gpu"]) -> None:
         loguru.logger.info("Setting backend to CPU with scanpy")
     elif backend == "gpu":
         try:
-            import rapids_singlecell # noqa F401
+            import rapids_singlecell  # noqa F401
+
             _current_backend["module"] = "rapids_singlecell"
             loguru.logger.info("Setting backend to GPU with rapids_singlecell")
         except ImportError as e:
@@ -31,25 +34,27 @@ def set_backend(backend: Literal["cpu", "gpu"]) -> None:
 
     sc_backend = importlib.import_module(_current_backend["module"])
 
+
 def with_current_backend(function: Callable) -> Callable:
     """Decorator to dynamically use current backend for scanpy-type functions.
     Also trims keyword arguments to only those accepted by the function.
-    
+
     If GPU backend is set, then function handles moving data to GPU memory.
     After running the function, it always returns it back to CPU memory.
 
     Args:
         function: Scanpy or rapids_singlecell function to wrap.
-    
+
     Returns:
         Wrapped function.
     """
+
     @wraps(function)
     def wrapper(adata, **kwargs):
         backend = _current_backend["module"]
         if backend == "rapids_singlecell":
             sc_backend.get.anndata_to_GPU(adata)
-        
+
         function_kwargs = trim_kwargs(kwargs, function)
         result = function(adata, **function_kwargs)
 
@@ -60,16 +65,17 @@ def with_current_backend(function: Callable) -> Callable:
                 sc_backend.get.anndata_to_CPU(result)
 
         return result
-    
+
     return wrapper
+
 
 def trim_kwargs(function_kwargs: dict, function: Callable) -> dict:
     """Trim function_kwargs to only those accepted by function.
-    
+
     Args:
         function_kwargs: Keyword arguments to trim.
         function: Function to trim keyword arguments for.
-    
+
     Returns:
         Trimmed keyword arguments.
     """
@@ -78,6 +84,7 @@ def trim_kwargs(function_kwargs: dict, function: Callable) -> dict:
         for k, v in function_kwargs.items()
         if k in function.__code__.co_varnames
     }
+
 
 def filter_by_obs_count(
     adata: AnnData,
@@ -134,6 +141,7 @@ def filter_by_obs_count(
     if copy:
         return adata
 
+
 def filter_by_obs_value(
     adata: AnnData,
     obs_col: str,
@@ -158,7 +166,7 @@ def filter_by_obs_value(
 
     MIN_DEFAULT = 10
     MAX_DEFAULT = 100000  # 255 8 bit, 1 pixel below
-    
+
     if copy:
         adata = adata.copy()
 
@@ -184,6 +192,7 @@ def filter_by_obs_value(
 
     if copy:
         return adata
+
 
 def filter_by_obs_quantile(
     adata: AnnData,
@@ -243,6 +252,7 @@ def filter_by_obs_quantile(
     if copy:
         return adata
 
+
 def filter_by_var_value(
     adata: AnnData,
     var: str,
@@ -294,6 +304,7 @@ def filter_by_var_value(
 
     if copy:
         return adata
+
 
 def filter_by_var_quantile(
     adata: AnnData,
@@ -349,6 +360,7 @@ def filter_by_var_quantile(
     if copy:
         return adata
 
+
 def fill_na(
     adata: AnnData,
     fill_value: float = 0.0,
@@ -362,7 +374,7 @@ def fill_na(
         fill_value: Value to fill NaNs with.
         layer: Expression layer to fill NaNs.
         copy: Return a copy instead of writing inplace.
-    
+
     Returns:
         AnnData object with NaNs filled. If `copy` is False, modifies the
         AnnData object in place and returns None.
@@ -378,25 +390,23 @@ def fill_na(
     if copy:
         return adata
 
+
 @with_current_backend
-def log1p(
-    adata: AnnData,
-    copy: bool = True,
-    **kwargs
-) -> AnnData:
+def log1p(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
     """Apply log1p transformation (natural log transform with pseudocount) to a
-    given layer or .X. Wraps `sc.pp.log1p` or `rsc.pp.log1p`. 
+    given layer or .X. Wraps `sc.pp.log1p` or `rsc.pp.log1p`.
 
     Args:
         adata: Anndata object.
         copy: Return a copy instead of writing inplace.
         **kwargs: Additional keyword arguments to pass to `pp.log1p`.
-    
+
     Returns:
         New AnnData object with log1p transformation applied. If `copy` is
             False, modifies the AnnData object in place and returns None.
     """
     return sc_backend.pp.log1p(adata, copy=copy, **kwargs)
+
 
 def arcsinh(
     adata: AnnData,
@@ -413,7 +423,7 @@ def arcsinh(
         layer: Expression layer to apply arcsinh transformation. If `None`, `X`
             is transformed.
         copy: Return a copy instead of writing inplace.
-    
+
     Returns:
         AnnData object with arcsinh transformation applied. If `copy` is False,
         modifies the AnnData object in place and returns None.
@@ -428,6 +438,7 @@ def arcsinh(
 
     if copy:
         return adata
+
 
 def zscore(
     adata: AnnData,
@@ -460,12 +471,10 @@ def zscore(
     if copy:
         return adata
 
+
 @with_current_backend
 def scale(
-    adata: AnnData,
-    layer: str | None = None,
-    copy: bool = True,
-    **kwargs
+    adata: AnnData, layer: str | None = None, copy: bool = True, **kwargs
 ) -> AnnData:
     """Scale columns and rows to have 0 mean and unit variance in a given layer
     or .X. Wraps `scanpy.pp.scale` or `rsc.pp.scale`.
@@ -476,12 +485,13 @@ def scale(
             transformed.
         copy: Return a copy instead of writing inplace.
         **kwargs: Additional keyword arguments to pass to `pp.scale`.
-    
+
     Returns:
         AnnData object with scale transformation applied. If `copy` is False,
         modifies the AnnData object in place and returns None
     """
     return sc_backend.pp.scale(adata, layer=layer, copy=copy, **kwargs)
+
 
 def percentile(
     adata: AnnData,
@@ -491,14 +501,14 @@ def percentile(
 ) -> AnnData:
     """Normalise data to the 95th or 99th percentile. Axis = 0, or per column.
     Wraps `np.percentile`.
-    
+
     Args:
         adata: Anndata object.
         percentile: Percentile to normalise to. Defaults to 95.
         layer (optional): Expression layer to apply percentile transformation.
             If `None`, `X` is transformed.
         copy: Return a copy instead of writing inplace.
-    
+
     Returns:
         AnnData object with percentile transformation applied. If `copy` is
         False, modifies the AnnData object in place and returns None.
@@ -517,7 +527,7 @@ def percentile(
             denominator[denominator == 0] = 1
         normalised_X = (X - min_val_per_axis) / denominator
         return normalised_X
-    
+
     if copy:
         adata = adata.copy()
 
@@ -525,10 +535,12 @@ def percentile(
         adata.X = _percentile_transform(adata.X, percentile, axis=0)
     else:
         adata.layers[layer] = _percentile_transform(
-            adata.layers[layer], percentile, axis=0)
+            adata.layers[layer], percentile, axis=0
+        )
 
     if copy:
         return adata
+
 
 @with_current_backend
 def neighbors(
@@ -543,14 +555,15 @@ def neighbors(
         adata: Anndata object.
         copy: Return a copy of the modified AnnData object.
         **kwargs: Additional keyword arguments to pass to `pp.neighbors`.
-    
+
     Returns:
         AnnData object with neighbors computed. If `copy` is False, modifies the
         AnnData object in place and returns None.
     """
     return sc_backend.pp.neighbors(adata, copy=copy, **kwargs)
 
-#TODO: Legacy/Deprecate
+
+# TODO: Legacy/Deprecate
 def split_by_obs(
     adata: AnnData, obs_var: str, selections: Optional[list[str]] = None
 ):

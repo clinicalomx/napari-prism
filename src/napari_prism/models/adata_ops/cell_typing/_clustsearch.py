@@ -8,11 +8,11 @@ from typing import Literal, Union
 
 import igraph as ig
 import leidenalg as lg
+import loguru
 import numpy as np
 import pandas as pd
 import sklearn.neighbors as skn
 from anndata import AnnData
-import loguru
 
 # TODO: make this cpu only
 from phenograph.core import parallel_jaccard_kernel
@@ -273,7 +273,8 @@ class KNNGPU(KNN):
         if metric in ["cosine", "correlation"]:
             algorithm = "brute"
             loguru.logger.info(
-                f"Enforcing brute search for {metric} metric", flush=True)
+                f"Enforcing brute search for {metric} metric", flush=True
+            )
 
         knn = self.cuml.neighbors.NearestNeighbors(
             n_neighbors=n_neighbors + 1,  # Due to results including self
@@ -508,11 +509,9 @@ class JaccardRefinerCPU(GraphRefiner):
         """
         subtic = time.time()
         loguru.logger.info(
-            (
-                f"Performing Jaccard on CPU:\n"
-                f"\t KNN graph nodes = {idx.shape[0]}\n"
-                f"\t KNN graph K-neighbors = {idx.shape[1]}\n"
-            )
+            f"Performing Jaccard on CPU:\n"
+            f"\t KNN graph nodes = {idx.shape[0]}\n"
+            f"\t KNN graph K-neighbors = {idx.shape[1]}\n"
         )
         # NetworkX-like format
         # NOTE: Below is a direct-neighbor comparison -> one-hop neighbors
@@ -535,10 +534,8 @@ class JaccardRefinerCPU(GraphRefiner):
         )
 
         loguru.logger.info(
-            (
-                f"Jaccard CPU edgelist constructed in {time.time() - subtic}"
-                f"seconds \n"
-            )
+            f"Jaccard CPU edgelist constructed in {time.time() - subtic}"
+            f"seconds \n"
         )
         return jaccard_edgelist
 
@@ -642,10 +639,8 @@ class JaccardRefinerGPU(GraphRefiner):
         """Set RMM to allocate all memory as managed memory; unified virtual memory
         aka GPU + CPU"""
         loguru.logger.info(
-            (
-                "Initialising rapids memory manager to enable memory"
-                "oversubscription with unified virtual memory..."
-            )
+            "Initialising rapids memory manager to enable memory"
+            "oversubscription with unified virtual memory..."
         )
         self.rmm.mr.set_current_device_resource(
             self.rmm.mr.ManagedMemoryResource()
@@ -657,11 +652,9 @@ class JaccardRefinerGPU(GraphRefiner):
 
         subtic = time.time()
         loguru.logger.info(
-            (
-                f"Performing Jaccard on GPU:\n"
-                f"\t KNN graph nodes = {idx.shape[0]}\n"
-                f"\t KNN graph K-neighbors = {idx.shape[1]}\n"
-            )
+            f"Performing Jaccard on GPU:\n"
+            f"\t KNN graph nodes = {idx.shape[0]}\n"
+            f"\t KNN graph K-neighbors = {idx.shape[1]}\n"
         )
 
         loguru.logger.info(
@@ -1744,7 +1737,8 @@ class ScanpyClusteringSearch(ScanpyClustering):
         adata.uns[UNS_ADDED_KEY_QUALITYSCORE] = df
 
         return adata
-    
+
+
 def cluster(
     adata: AnnData,
     recipe: Literal["phenograph", "scanpy"],

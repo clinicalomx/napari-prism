@@ -1,4 +1,5 @@
 from typing import Any
+
 import napari
 import pandas as pd
 from anndata import AnnData
@@ -170,7 +171,7 @@ class AnnDataOperatorWidget(BaseNapariWidget):
         """Check if the `adata` object has expression information if it contains
         objects (.obs) and features (.var), or if it has a .X matrix."""
         n_obs, n_vars = adata.shape
-        return ((n_obs != 0 and n_vars != 0)) or adata.X
+        return (n_obs != 0 and n_vars != 0) or adata.X
 
     def get_expression_layers(self, widget=None) -> list[str]:
         """Returns the keys of the layers attribute of the contained AnnData
@@ -217,7 +218,8 @@ class AnnDataOperatorWidget(BaseNapariWidget):
             label="Select an expression layer",
         )
         self._expression_selector.changed.connect(
-            self.set_selected_expression_layer_as_X)
+            self.set_selected_expression_layer_as_X
+        )
         self._expression_selector.scrollable = True
         self.extend([self._expression_selector])
 

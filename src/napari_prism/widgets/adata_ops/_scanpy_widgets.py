@@ -9,10 +9,12 @@ from matplotlib.lines import Line2D
 from napari.utils import DirectLabelColormap
 from napari.utils.colormaps import label_colormap
 from qtpy.QtWidgets import QWidget
+
 from napari_prism import pp, tl
 from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._plot_widgets import GeneralMPLWidget
+
 
 class ScanpyClusterCanvas(GeneralMPLWidget):
     """Sub-widget for showing existing scanpy cluster/heatmap-like plots. To be
@@ -23,7 +25,7 @@ class ScanpyClusterCanvas(GeneralMPLWidget):
         "dotplot": sc.pl.dotplot,
         "matrixplot": sc.pl.matrixplot,
         "stackedviolin": sc.pl.stacked_violin,
-        #"clustermap": sc.pl.clustermap,
+        # "clustermap": sc.pl.clustermap,
     }
 
     def __init__(
@@ -95,10 +97,7 @@ class ScanpyPlotWidget(AnnDataOperatorWidget):
     """Parent widget for plotting scanpy cluster/heatmap-like plots."""
 
     def __init__(
-        self, 
-        viewer: "napari.viewer.Viewer", 
-        adata: AnnData, 
-        *args, **kwargs
+        self, viewer: "napari.viewer.Viewer", adata: AnnData, *args, **kwargs
     ) -> None:
         #: Axes for the color map legend
         self.ax_cmap_legend = None
@@ -108,13 +107,17 @@ class ScanpyPlotWidget(AnnDataOperatorWidget):
         self.cat_to_color = None
         super().__init__(viewer, adata, *args, **kwargs)
 
-        scanpy_plots = ["matrixplot", "dotplot", "stackedviolin"] #"clustermap"]
+        scanpy_plots = [
+            "matrixplot",
+            "dotplot",
+            "stackedviolin",
+        ]  # "clustermap"]
 
         self.scanpy_clusterplot_funcs = {
             "dotplot": sc.pl.dotplot,
             "matrixplot": sc.pl.matrixplot,
             "stackedviolin": sc.pl.stacked_violin,
-            #"clustermap": sc.pl.clustermap,
+            # "clustermap": sc.pl.clustermap,
         }
         Opts = Enum("ScanpyPlots", scanpy_plots)
         iterable_opts = list(Opts)
@@ -573,7 +576,7 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
                 ObsHelper.get_duplicated_keys(self.adata, "index")
             )
             return available_batch_keys
-        
+
     def collect_parameters(self) -> dict:
         """Collect the parameters from the widgets and return them as a
         dictionary."""
@@ -604,6 +607,7 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         scanpy_function = self.embedding_functions_selection.value
         kwargs = self.collect_parameters()
         self.adata = function_map[scanpy_function](
-            self.adata, copy=True, **kwargs)
+            self.adata, copy=True, **kwargs
+        )
         # Refresh widgets subscribing to anndata
         AnnDataOperatorWidget.update_model_all_operators(self.adata)

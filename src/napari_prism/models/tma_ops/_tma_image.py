@@ -3,8 +3,8 @@ from functools import partial
 from itertools import product
 from math import pi
 from pathlib import Path
-from typing import Any, Literal
 from threading import Lock
+from typing import Any, Literal
 
 import anndata as ad
 import geopandas
@@ -63,7 +63,7 @@ class SdataImageOperations:
     projection, and coordinate system transformations."""
 
     #: Lock writing operations to one thread
-    _write_lock = Lock() 
+    _write_lock = Lock()
 
     MULTICHANNEL_PROJECTION_METHODS = ["max", "mean", "sum", "median"]
 

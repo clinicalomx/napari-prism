@@ -877,7 +877,9 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             )
             self.viewer.layers.remove(labels)
             sdata_widget = self.get_sdata_widget()
-            sdata_widget._onClick(text=labels.name)  # mimick re-adding the layer
+            sdata_widget._onClick(
+                text=labels.name
+            )  # mimick re-adding the layer
 
     @thread_worker
     def _run_segmentation(self, preview):

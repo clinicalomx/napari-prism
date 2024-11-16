@@ -113,7 +113,7 @@ class ClusteringSearchEvaluator:
         cluster_df.columns = pd.MultiIndex.from_tuples(cluster_df.columns)
         cluster_df.columns = cluster_df.columns.set_names(("K", "R"))
         return cluster_df
-    
+
     def between_model_score(
         self, score_function: callable, k: int | None = None, **kwargs
     ) -> pd.DataFrame:
