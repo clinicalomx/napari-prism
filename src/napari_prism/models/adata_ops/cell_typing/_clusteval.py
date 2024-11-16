@@ -108,12 +108,12 @@ class ClusteringSearchEvaluator:
         # Get the nicer dataframe version of obsm
         cluster_df = self.cluster_labels.copy()
         cluster_df.columns = [
-            tuple(k, r) for k, r in cluster_df.columns.str.split("_")
+            tuple(k_r) for k_r in cluster_df.columns.str.split("_")
         ]
         cluster_df.columns = pd.MultiIndex.from_tuples(cluster_df.columns)
         cluster_df.columns = cluster_df.columns.set_names(("K", "R"))
         return cluster_df
-
+    
     def between_model_score(
         self, score_function: callable, k: int | None = None, **kwargs
     ) -> pd.DataFrame:
@@ -164,3 +164,11 @@ class ClusteringSearchEvaluator:
     def adjusted_mutual_info(self, k=None):
         """Wrapper function"""
         return self.between_model_score(self.ml.adjusted_mutual_info_score, k)
+
+    def within_model_score(
+        self, score_function: callable, k: int | None = None, **kwargs
+    ) -> pd.DataFrame:
+        """Return an array of quality scores within each clustering run.
+        Usually, `score_function` computes a score that assesss how well the
+        assigned cluster labels aggregate in some data space."""
+        raise NotImplementedError()

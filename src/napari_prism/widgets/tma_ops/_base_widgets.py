@@ -46,6 +46,10 @@ class SdataImageNapariWidget(BaseNapariWidget):
         """Temporary solution until public API calls to napari-spatialdata
         classes are released.
 
+        The result is a refresh of the elements from the possibly updated
+        SpatialData disk object in the current coordinate system of the
+        active (recently processed/used) layer.
+
         Follow: https://github.com/scverse/napari-spatialdata/issues/312
         """
         spatial_data_widget = self.get_sdata_widget()

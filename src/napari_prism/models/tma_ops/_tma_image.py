@@ -4,6 +4,7 @@ from itertools import product
 from math import pi
 from pathlib import Path
 from typing import Any, Literal
+from threading import Lock
 
 import anndata as ad
 import geopandas
@@ -60,6 +61,9 @@ class SdataImageOperations:
     """Base class for operating on Image elements in SpatialData objects.
     Contains general methods for image operations, such as contrast correction,
     projection, and coordinate system transformations."""
+
+    #: Lock writing operations to one thread
+    _write_lock = Lock() 
 
     MULTICHANNEL_PROJECTION_METHODS = ["max", "mean", "sum", "median"]
 
@@ -244,8 +248,10 @@ class SdataImageOperations:
                 and len(sdata.locate_element(sdata[element_name])) != 0
             ):
                 if overwrite:
-                    del sdata[element_name]
-                    sdata.delete_element_from_disk(element_name)
+                    with self._write_lock:
+                        logger.info(f"Overwriting {element_name}")
+                        del sdata[element_name]
+                        sdata.delete_element_from_disk(element_name)
                 else:
                     raise OSError(
                         f"`{element_name}` already exists. Use overwrite="

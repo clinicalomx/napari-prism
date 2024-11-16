@@ -858,6 +858,7 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         worker = self._run_segmentation(preview)
         # TODO: add progress bar; logging message etcd
         worker.start()
+        worker.finished.connect(self.post_run_segmentation)
         worker.finished.connect(self.enable_function_button)
         worker.finished.connect(self.refresh_sdata_widget)
 
@@ -867,6 +868,16 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         #     rgb=True)
 
         # worker.returned.connect(add_image)
+
+    def post_run_segmentation(self):
+        seg_name = self.model.image_name + "_labels"
+        if seg_name in self.viewer.layers:
+            labels = get_selected_layer(
+                self.viewer, self.model.image_name + "_labels"
+            )
+            self.viewer.layers.remove(labels)
+            sdata_widget = self.get_sdata_widget()
+            sdata_widget._onClick(text=labels.name)  # mimick re-adding the layer
 
     @thread_worker
     def _run_segmentation(self, preview):

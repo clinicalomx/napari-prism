@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import sklearn.neighbors as skn
 from anndata import AnnData
+import loguru
 
 # TODO: make this cpu only
 from phenograph.core import parallel_jaccard_kernel
@@ -126,18 +127,17 @@ class KNNCPU(KNN):
         )
         algorithm_string = f"\t Search Algorithm = {algorithm}\n"
 
-        print(
+        loguru.logger.info(
             "Performing KNN search on CPU: \n"
             + k_string
             + distance_string
             + algorithm_string,
-            flush=True,
         )
 
         # Enforce brute force if metric is cosine or correlation
         if metric in ["cosine", "correlation"]:
             algorithm = "brute"
-            print(f"Enforcing brute search for {metric} metric", flush=True)
+            loguru.logger.info(f"Enforcing brute search for {metric} metric")
 
         knn = skn.NearestNeighbors(
             n_neighbors=n_neighbors + 1,  # Due to results including self
@@ -150,9 +150,8 @@ class KNNCPU(KNN):
         knn.fit(data)
         d, idx = knn.kneighbors(data)
         d, idx = self._remove_self_distances(d, idx)
-        print(
+        loguru.logger.info(
             f"KNN CPU computed in {time.time() - subtic} seconds \n",
-            flush=True,
         )
         return d, idx
 
@@ -263,18 +262,18 @@ class KNNGPU(KNN):
         )
         algorithm_string = f"\t Search Algorithm = {algorithm}\n"
 
-        print(
+        loguru.logger.info(
             "Performing KNN search on GPU: \n"
             + k_string
             + distance_string
             + algorithm_string,
-            flush=True,
         )
 
         # Enforce brute force if metric is cosine or correlation
         if metric in ["cosine", "correlation"]:
             algorithm = "brute"
-            print(f"Enforcing brute search for {metric} metric", flush=True)
+            loguru.logger.info(
+                f"Enforcing brute search for {metric} metric", flush=True)
 
         knn = self.cuml.neighbors.NearestNeighbors(
             n_neighbors=n_neighbors + 1,  # Due to results including self
@@ -291,9 +290,8 @@ class KNNGPU(KNN):
         knn.fit(X_cupy)
         d, idx = knn.kneighbors(X_cupy, two_pass_precision=two_pass_precision)
         d, idx = self._remove_self_distances(d, idx)
-        print(
-            f"KNN GPU computed in {time.time() - subtic} seconds \n",
-            flush=True,
+        loguru.logger.info(
+            f"KNN GPU computed in {time.time() - subtic} seconds \n"
         )
         return d, idx
 
@@ -509,13 +507,12 @@ class JaccardRefinerCPU(GraphRefiner):
             Edgelist of the Jaccard index.
         """
         subtic = time.time()
-        print(
+        loguru.logger.info(
             (
                 f"Performing Jaccard on CPU:\n"
                 f"\t KNN graph nodes = {idx.shape[0]}\n"
                 f"\t KNN graph K-neighbors = {idx.shape[1]}\n"
-            ),
-            flush=True,
+            )
         )
         # NetworkX-like format
         # NOTE: Below is a direct-neighbor comparison -> one-hop neighbors
@@ -537,12 +534,11 @@ class JaccardRefinerCPU(GraphRefiner):
             idx.shape[0], jaccard_edgelist
         )
 
-        print(
+        loguru.logger.info(
             (
                 f"Jaccard CPU edgelist constructed in {time.time() - subtic}"
                 f"seconds \n"
-            ),
-            flush=True,
+            )
         )
         return jaccard_edgelist
 
@@ -645,9 +641,11 @@ class JaccardRefinerGPU(GraphRefiner):
     def initialise_uvm(self):
         """Set RMM to allocate all memory as managed memory; unified virtual memory
         aka GPU + CPU"""
-        print(
-            "Initialising rapids memory manager to enable memory oversubscription with unified virtual memory...",
-            flush=True,
+        loguru.logger.info(
+            (
+                "Initialising rapids memory manager to enable memory"
+                "oversubscription with unified virtual memory..."
+            )
         )
         self.rmm.mr.set_current_device_resource(
             self.rmm.mr.ManagedMemoryResource()
@@ -658,22 +656,20 @@ class JaccardRefinerGPU(GraphRefiner):
         self.initialise_uvm()
 
         subtic = time.time()
-        print(
+        loguru.logger.info(
             (
                 f"Performing Jaccard on GPU:\n"
                 f"\t KNN graph nodes = {idx.shape[0]}\n"
                 f"\t KNN graph K-neighbors = {idx.shape[1]}\n"
-            ),
-            flush=True,
+            )
         )
 
-        print(
+        loguru.logger.info(
             (
                 "NOTE: This performs undirected KNN Jaccard refinement. "
                 "Different to the original CPU implementation, which is a"
                 " directed KNN. Set sizes between nodes will be different. \n"
             ),
-            flush=True,
         )
         edgelist = self.idx_partner_to_edgelist(idx, output_type="cudf")
         G = self.cugraph.from_cudf_edgelist(edgelist)
@@ -684,12 +680,11 @@ class JaccardRefinerGPU(GraphRefiner):
             )  # This will compute two-hop; expensive
         else:
             jac_edgelist = self.cugraph.jaccard(G, vertex_pair=edgelist)
-        print(
+        loguru.logger.info(
             (
                 f"Jaccard GPU edgelist constructed in {time.time() - subtic}"
                 f"seconds \n"
             ),
-            flush=True,
         )
         return jac_edgelist
 
@@ -880,22 +875,20 @@ class GraphClustererGPU:
             Tuple of the cluster labels and the quality score.
         """
         subtic = time.time()
-        print(
+        loguru.logger.info(
             (
                 f"Performing Louvain on GPU: \n"
                 f"\t Resolution = {resolution}\n"
                 f"\t Max iterations = {max_iter}\n"
                 f"\t Min cluster size = {min_size}\n"
             ),
-            flush=True,
         )
         cdf, Q = self.cugraph.louvain(
             cgraph, resolution=resolution, max_iter=max_iter
         )
         cdf = self._sort_vertex_values(cdf, min_size)
-        print(
+        loguru.logger.info(
             f"cugraph.louvain computed in {time.time() - subtic} seconds \n",
-            flush=True,
         )
         return cdf, Q
 
@@ -919,24 +912,23 @@ class GraphClustererGPU:
             Tuple of the cluster labels and the quality score
         """
         subtic = time.time()
-        print(
+        loguru.logger.info(
             (
                 f"Performing Leiden on GPU: \n"
                 f"\t Resolution = {resolution}\n"
                 f"\t Max iterations = {max_iter}\n"
                 f"\t Min cluster size = {min_size}\n"
             ),
-            flush=True,
         )
         cdf, Q = self.cugraph.leiden(
             cgraph, resolution=resolution, max_iter=max_iter
         )
         cdf = self._sort_vertex_values(cdf, min_size)
-        print(
+        loguru.logger.info(
             f"cugraph.leiden computed in {time.time() - subtic} seconds \n",
             flush=True,
         )
-        print(f"Q = {Q}", flush=True)
+        loguru.logger.info(f"Q = {Q}", flush=True)
         return cdf, Q
 
     def _sort_vertex_values(self, cdf, min_size):
@@ -1275,8 +1267,8 @@ class HybridPhenographSearch(HybridPhenographModular):
 
     def _log_current_time(self):
         if self.log_time:
-            print(
-                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]", flush=True
+            loguru.logger.info(
+                f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
             )
 
     def parameter_search(
@@ -1332,7 +1324,7 @@ class HybridPhenographSearch(HybridPhenographModular):
         if rs is None:
             rs = [1.0]
         self.log_time = log_time
-        print("Beginning Parameter Search... \n", flush=True)
+        loguru.logger.info("Beginning Parameter Search... \n")
         self._log_current_time()
 
         # Use PCA embeddings as input data
@@ -1415,16 +1407,17 @@ class HybridPhenographSearch(HybridPhenographModular):
         self.index_map = dict(zip(number_index, adata.obs.index, strict=False))
         results = self.df.DataFrame(self.data_grid)
         results.index = results.index.astype(str)
-        results.index = results.index.map(
-            self.index_map
-        )  # index map -> cudf diff..
+        if self.clusterer_backend == "GPU":
+            # cudf Index lacks map
+            reindexed = results.index.to_series().map(self.index_map)
+        else:
+            reindexed = results.index.map(self.index_map)
+        results.index = reindexed
 
         adata = self._label_adata(adata, results)
         return adata
 
     def _label_adata(self, adata, results_df):
-        self._set_df_backend("CPU")  # pandas
-
         # Store labels in an obsm matrix
         OBSM_ADDED_KEY = self.__class__.__name__ + "_labels"
 
@@ -1434,6 +1427,8 @@ class HybridPhenographSearch(HybridPhenographModular):
         # results_df.columns = results_df.columns.map(label_map)
         # Convert tuple to string so its Zarr writable
         # Just go with "K_R" for now
+        if self.clusterer_backend == "GPU":
+            results_df = results_df.to_pandas()
         results_df.columns = [f"{k}_{r}" for k, r in results_df.columns]
         adata.obsm[OBSM_ADDED_KEY] = results_df
         # adata.uns[UNS_ADDED_KEY_LABELMAP] = label_map
@@ -1442,6 +1437,7 @@ class HybridPhenographSearch(HybridPhenographModular):
         UNS_ADDED_KEY_QUALITYSCORE = (
             self.__class__.__name__ + "_quality_scores"
         )
+        self._set_df_backend("CPU")  # pandas
         df = self.df.DataFrame(
             self.df.DataFrame(
                 self.quality_grid, index=list(range(len(self.quality_grid)))
@@ -1621,9 +1617,8 @@ class ScanpyClusteringSearch(ScanpyClustering):
 
     def _log_current_time(self, message):
         if self.log_time:
-            print(
+            loguru.logger.info(
                 f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n{message}",
-                flush=True,
             )
 
     def parameter_search(
@@ -1717,30 +1712,43 @@ class ScanpyClusteringSearch(ScanpyClustering):
         return adata
 
     def _label_adata(self, adata, results_df):
-        """Inplace operations on adata. All CPU based"""
-        self._set_df_backend("CPU")  # pandas
-
         # Store labels in an obsm matrix
         OBSM_ADDED_KEY = self.__class__.__name__ + "_labels"
 
         # Store what parameters each column label represents in the obsm matrix
         # UNS_ADDED_KEY_LABELMAP = self.__class__.__name__ + "_label_map"
         # label_map = {k:v for k,v in enumerate(self.data_grid.keys())} # obsm index : (k,r)
-
-        adata.obsm[OBSM_ADDED_KEY] = results_df.values
+        # results_df.columns = results_df.columns.map(label_map)
+        # Convert tuple to string so its Zarr writable
+        # Just go with "K_R" for now
+        if self.clusterer_backend == "GPU":
+            results_df = results_df.to_pandas()
+        results_df.columns = [f"{k}_{r}" for k, r in results_df.columns]
+        adata.obsm[OBSM_ADDED_KEY] = results_df
         # adata.uns[UNS_ADDED_KEY_LABELMAP] = label_map
 
         # Add param grids as quality grid
         UNS_ADDED_KEY_QUALITYSCORE = (
             self.__class__.__name__ + "_quality_scores"
         )
+        self._set_df_backend("CPU")  # pandas
         df = self.df.DataFrame(
             self.df.DataFrame(
                 self.quality_grid, index=list(range(len(self.quality_grid)))
             ).T[0]
         )
+        df = df.reset_index()
+        df = df.rename(columns={"level_0": "K", "level_1": "R"})
         df = df.rename(columns={0: "modularity_score"})
 
         adata.uns[UNS_ADDED_KEY_QUALITYSCORE] = df
 
         return adata
+    
+def cluster(
+    adata: AnnData,
+    recipe: Literal["phenograph", "scanpy"],
+    backend: Literal["CPU", "GPU"] = "CPU",
+    **kwargs,
+) -> AnnData:
+    pass

@@ -1,5 +1,4 @@
 from typing import Any
-
 import napari
 import pandas as pd
 from anndata import AnnData
@@ -13,11 +12,12 @@ from napari_prism.widgets._widget_utils import (
 
 
 class AnnDataOperatorWidget(BaseNapariWidget):
-    _instances = []
     """Parent class for widgets which operate on an existing AnnData instance.
     This class holds all subclass instances. Enforces that all subclasses
     are operating on the same AnnData instance.
     """
+
+    _instances = []
 
     def __init__(
         self,
@@ -170,7 +170,7 @@ class AnnDataOperatorWidget(BaseNapariWidget):
         """Check if the `adata` object has expression information if it contains
         objects (.obs) and features (.var), or if it has a .X matrix."""
         n_obs, n_vars = adata.shape
-        return n_obs == 0 or n_vars == 0 or adata.X
+        return ((n_obs != 0 and n_vars != 0)) or adata.X
 
     def get_expression_layers(self, widget=None) -> list[str]:
         """Returns the keys of the layers attribute of the contained AnnData
@@ -216,6 +216,8 @@ class AnnDataOperatorWidget(BaseNapariWidget):
             choices=self.get_expression_layers,
             label="Select an expression layer",
         )
+        self._expression_selector.changed.connect(
+            self.set_selected_expression_layer_as_X)
         self._expression_selector.scrollable = True
         self.extend([self._expression_selector])
 
@@ -227,7 +229,8 @@ class AnnDataOperatorWidget(BaseNapariWidget):
     def set_selected_expression_layer_as_X(self) -> None:
         """Sets the expression layer selected in the expression layer as the
         .X attribute of the contained AnnData object."""
-        self.adata.X = self.get_selected_expression_layer()
+        if self.adata is not None and self.adata_has_expression(self.adata):
+            self.adata.X = self.get_selected_expression_layer()
 
     def get_segmentation_element(self) -> Any:
         """Returns the labels element from the SpatialData object that annotates

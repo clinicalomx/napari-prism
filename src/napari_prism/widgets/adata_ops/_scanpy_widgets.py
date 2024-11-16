@@ -9,11 +9,10 @@ from matplotlib.lines import Line2D
 from napari.utils import DirectLabelColormap
 from napari.utils.colormaps import label_colormap
 from qtpy.QtWidgets import QWidget
-
-from napari_prism.widgets._widget_utils import gpu_available
+from napari_prism import pp, tl
+from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._plot_widgets import GeneralMPLWidget
-
 
 class ScanpyClusterCanvas(GeneralMPLWidget):
     """Sub-widget for showing existing scanpy cluster/heatmap-like plots. To be
@@ -24,7 +23,7 @@ class ScanpyClusterCanvas(GeneralMPLWidget):
         "dotplot": sc.pl.dotplot,
         "matrixplot": sc.pl.matrixplot,
         "stackedviolin": sc.pl.stacked_violin,
-        "clustermap": sc.pl.clustermap,
+        #"clustermap": sc.pl.clustermap,
     }
 
     def __init__(
@@ -96,7 +95,10 @@ class ScanpyPlotWidget(AnnDataOperatorWidget):
     """Parent widget for plotting scanpy cluster/heatmap-like plots."""
 
     def __init__(
-        self, viewer: "napari.viewer.Viewer", adata: AnnData, *args, **kwargs
+        self, 
+        viewer: "napari.viewer.Viewer", 
+        adata: AnnData, 
+        *args, **kwargs
     ) -> None:
         #: Axes for the color map legend
         self.ax_cmap_legend = None
@@ -106,13 +108,13 @@ class ScanpyPlotWidget(AnnDataOperatorWidget):
         self.cat_to_color = None
         super().__init__(viewer, adata, *args, **kwargs)
 
-        scanpy_plots = ["matrixplot", "dotplot", "stackedviolin", "clustermap"]
+        scanpy_plots = ["matrixplot", "dotplot", "stackedviolin"] #"clustermap"]
 
         self.scanpy_clusterplot_funcs = {
             "dotplot": sc.pl.dotplot,
             "matrixplot": sc.pl.matrixplot,
             "stackedviolin": sc.pl.stacked_violin,
-            "clustermap": sc.pl.clustermap,
+            #"clustermap": sc.pl.clustermap,
         }
         Opts = Enum("ScanpyPlots", scanpy_plots)
         iterable_opts = list(Opts)
@@ -292,18 +294,24 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
     objects."""
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
-        self.model = None
         super().__init__(viewer, adata)
         self.current_layer = None
-        self.gpu_toggle = None
+        self.gpu = False
+
+    def gpu_toggle(self) -> None:
+        self.gpu = not self.gpu
+        if self.gpu:
+            pp.set_backend("gpu")
+            tl.set_backend("gpu")
+        else:
+            pp.set_backend("cpu")
+            tl.set_backend("cpu")
 
     def update_layer(self, layer) -> None:
         self.current_layer = layer
 
-    def update_model(self, adata: AnnData, model=None) -> None:
+    def update_model(self, adata: AnnData) -> None:
         self.adata = adata
-        if model is not None:
-            self.model = model
 
     def create_parameter_widgets(self) -> None:
         """Has a ComboBox for user to select a scanpy function perform. Calls
@@ -328,12 +336,6 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         self.embedding_functions_selection.changed.connect(
             self.local_create_parameter_widgets
         )
-
-        if gpu_available():
-            self.gpu_toggle = create_widget(
-                value=False, name="Use GPU", annotation=bool
-            )
-            self.extend([self.gpu_toggle])
 
         self.extend(
             [
@@ -558,6 +560,20 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
             self.apply_button.changed.connect(self._apply_scanpy_function)
             self.extend([self.apply_button])
 
+    def get_batch_keys(self, widget=None) -> None:
+        """Gets obs keys from the AnnData object which may indicate 'batch'
+        keys for batch correction. These keys usually have a 1:N relation to
+        the cells in the AnnData object (i.e. multiple cells per category).
+        """
+        if self.adata is None or "index" not in self.adata.obs.columns:
+            return []
+
+        else:
+            available_batch_keys = list(
+                ObsHelper.get_duplicated_keys(self.adata, "index")
+            )
+            return available_batch_keys
+        
     def collect_parameters(self) -> dict:
         """Collect the parameters from the widgets and return them as a
         dictionary."""
@@ -578,12 +594,16 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
 
     def _apply_scanpy_function(self) -> None:
         """Apply the selected scanpy function to the AnnData object."""
-        if self.model is not None:
-            scanpy_function = self.embedding_functions_selection.value
-            print(scanpy_function)
-            kwargs = self.collect_parameters()
-            model_func = getattr(self.model, scanpy_function)
-            print(model_func)
-            model_func(**kwargs)
-            # Refresh widgets subscribing to anndata
-            AnnDataOperatorWidget.refresh_widgets_all_operators()
+        function_map = {
+            "pca": tl.pca,
+            "tsne": tl.tsne,
+            "neighbors": pp.neighbors,
+            "umap": tl.umap,
+            "harmonypy": tl.harmony,
+        }
+        scanpy_function = self.embedding_functions_selection.value
+        kwargs = self.collect_parameters()
+        self.adata = function_map[scanpy_function](
+            self.adata, copy=True, **kwargs)
+        # Refresh widgets subscribing to anndata
+        AnnDataOperatorWidget.update_model_all_operators(self.adata)

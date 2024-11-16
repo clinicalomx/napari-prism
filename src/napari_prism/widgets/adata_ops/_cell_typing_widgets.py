@@ -5,7 +5,7 @@ import loguru
 import napari
 import numpy as np
 from anndata import AnnData
-from magicgui.widgets import ComboBox, Container, Select, create_widget
+from magicgui.widgets import ComboBox, Container, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from napari.utils.events import EmitterGroup
 from qtpy.QtCore import QPoint, Qt, QTimer
@@ -13,7 +13,6 @@ from qtpy.QtWidgets import QAction, QMenu, QTabWidget, QTreeWidget
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
-from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
 from napari_prism.models.adata_ops.cell_typing._augmentation import (
     add_obs_as_var,
     subset_adata_by_var,
@@ -25,15 +24,7 @@ from napari_prism.models.adata_ops.cell_typing._clustsearch import (
     HybridPhenographSearch,
     ScanpyClusteringSearch,
 )
-from napari_prism.models.adata_ops.cell_typing._preprocessing import (
-    AnnDataProcessor,
-    filter_by_obs_count,
-    filter_by_obs_quantile,
-    filter_by_obs_value,
-    filter_by_var_quantile,
-    filter_by_var_value,
-    get_GPU_version,
-)
+from napari_prism import pp # refactored preprocessing class to funcs only
 from napari_prism.models.adata_ops.cell_typing._subsetter import AnnDataNodeQT
 from napari_prism.widgets._widget_utils import (
     BaseNapariWidget,
@@ -51,7 +42,6 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
     ScanpyFunctionWidget,
     ScanpyPlotWidget,
 )
-
 
 class AnnDataSubsetterWidget(BaseNapariWidget):
     """Widget for subsetting anndata objects. Holds a QTreeWidget for
@@ -412,11 +402,11 @@ class QCWidget(AnnDataOperatorWidget):
         `self.local_create_parameter_widgets` to create the appropriate widgets.
         """
         self.qc_functions = {
-            "filter_by_obs_count": filter_by_obs_count,
-            "filter_by_obs_value": filter_by_obs_value,
-            "filter_by_obs_quantile": filter_by_obs_quantile,
-            "filter_by_var_value": filter_by_var_value,
-            "filter_by_var_quantile": filter_by_var_quantile,
+            "filter_by_obs_count": pp.filter_by_obs_count,
+            "filter_by_obs_value": pp.filter_by_obs_value,
+            "filter_by_obs_quantile": pp.filter_by_obs_quantile,
+            "filter_by_var_value": pp.filter_by_var_value,
+            "filter_by_var_quantile": pp.filter_by_var_quantile,
         }
         Opts = Enum("QCFunctions", list(self.qc_functions.keys()))
 
@@ -743,9 +733,6 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             augment_created=None,  # Out
         )
 
-        #: Current analysis model for the widget. NOTE: maybe deprecated in
-        # favour of using functions rather than an analyis class.
-        self.model = None
         super().__init__(viewer, adata)
 
     def create_model(self, adata: AnnData) -> None:
@@ -756,12 +743,7 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         the AnnData object and the created analysis model class to the
         embedding tab."""
         self.adata = adata
-        self.model = AnnDataProcessor(adata)
-        self.embeddings_tab_cls.update_model(self.adata, self.model)
-        # if gpu_available():
-        #     self.model = AnnDataProcessorGPU(adata)
-        # else:
-        #     self.model = AnnDataProcessor(adata)
+        self.embeddings_tab_cls.update_model(self.adata)
 
     def reset_choices(self):
         """Reset the choices of the widgets in the widget. Propagate this to
@@ -782,9 +764,6 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         # Transform Tab
         self.transform_tab = Container()
         transforms = ["arcsinh", "scale", "percentile", "zscore", "log1p"]
-
-        # Dispatcher dict for the transform functions
-        self.transform_funcs = AnnDataProcessor.transform_funcs
 
         Opts = Enum("Transforms", transforms)
         iterable_opts = list(Opts)
@@ -814,15 +793,6 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         )
         self.processing_tabs.addTab(self.transform_tab.native, "Transforms")
 
-        # Conditionally create thhis widget based on gpu availability
-        self.gpu_toggle_button = None
-        if gpu_available():
-            self.gpu_toggle_button = create_widget(
-                value=False, name="Use GPU", annotation=bool
-            )
-            self.gpu_toggle_button.changed.connect(self._gpu_toggle)
-            self.extend([self.gpu_toggle_button])
-
         # Data QC Tabs
         self.qc_tab = QCWidget(self.viewer, self.adata)
         # ingoing
@@ -847,79 +817,44 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             self.embeddings_tab_cls.native, "Embeddings"
         )
 
-    def get_batch_keys(self, widget=None) -> None:
-        """Gets obs keys from the AnnData object which may indicate 'batch'
-        keys for batch correction. These keys usually have a 1:N relation to
-        the cells in the AnnData object (i.e. multiple cells per category).
-        """
-        if self.model is None or "index" not in self.model.adata.obs.columns:
-            return []
-
-        else:
-            available_batch_keys = list(
-                ObsHelper.get_duplicated_keys(self.model.adata, "index")
+        # Conditionally create this widget based on gpu availability
+        self.gpu_toggle_button = None
+        if gpu_available():
+            self.gpu_toggle_button = create_widget(
+                value=False, name="Use GPU", annotation=bool
             )
-            return available_batch_keys
+            self.gpu_toggle_button.changed.connect(self._gpu_toggle)
+            self.gpu_toggle_button.changed.connect(
+                self.embeddings_tab_cls.gpu_toggle)
+            self.extend([self.gpu_toggle_button])
 
     def _gpu_toggle(self) -> None:
         """Toggle between using the GPU or CPU version of the model."""
         if self.gpu_toggle_button.value is True:
-            self.model.get_CPU_version()
+            pp.set_backend("gpu")
         else:
-            self.model = get_GPU_version(self.model)
-
-    @thread_worker
-    def _pca(self) -> None:
-        self.pca_button.enabled = False
-        self.model.pca(n_comps=int(self.pca_n_components_entry.value))
-        self.pca_button.enabled = True
-
-    def run_pca(self) -> None:
-        """Run PCA on the selected expression layer in a separate processing
-        thread. Once tcomplete, refresh all widgets to show the new PCA results
-        in the AnnData object."""
-        self.set_selected_expression_layer_as_X()
-        worker = self._pca()
-        worker.start()
-        worker.finished.connect(
-            AnnDataOperatorWidget.refresh_widgets_all_operators
-        )
-
-    # @thread_worker # breaks if threaded since harmonypy launches its own workers
-    def _harmony(self):
-        self.harmony_button.enabled = False
-        self.model.harmony(key=self.batch_key_selection.value)
-        self.harmony_button.enabled = True
-
-    def run_harmony(self) -> None:
-        """Run HarmonyPy batch corretion on the selected embedding in .obsm.
-        Currently does this on the GUI thread. Once complete, refresh all
-        widgets to show the batch corrected embedding in the AnnData object.
-
-        TODO: Need to launch on a separate thread from the GUI.
-        Harmonpy launches its own threads, so threading this function causes
-        crashes.
-        """
-        self.set_selected_expression_layer_as_X()
-        # worker = self._harmony()
-        # worker.start()
-        # worker.finished.connect(AnnDataOperatorWidget.refresh_widgets_all_operators)
-        self._harmony()
-        AnnDataOperatorWidget.refresh_widgets_all_operators()
+            pp.set_backend("cpu")
 
     def _apply_transforms(self) -> None:
         """Apply the selected transforms to the selected expression layer in
         the AnnData object. Once complete, refresh all widgets to show the
         transformed expression layer in the AnnData object."""
-        self.set_selected_expression_layer_as_X()  # adata.layer -> adata.X <<- self.model.adata.X
+        transform_map = {
+            "arcsinh": pp.arcsinh,
+            "scale": pp.scale,
+            "percentile": pp.percentile,
+            "zscore": pp.zscore,
+            "log1p": pp.log1p,
+        }
+
+        self.set_selected_expression_layer_as_X()
         transform_label = ""
         for transform in self.transforms_list.value:
-            self.model.call_transform(transform.name)
+            transform_map[transform.name](self.adata, copy=False)
             transform_label += f"{transform.name}_"
         transform_label += self._expression_selector.value
-        self.adata.layers[transform_label] = self.model.adata.X
+        self.adata.layers[transform_label] = self.adata.X
         AnnDataOperatorWidget.refresh_widgets_all_operators()
-
 
 class ClusterSearchWidget(AnnDataOperatorWidget):
     """Widget for performing multiple clustering runs of AnnData objects over
@@ -1137,6 +1072,8 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
         else:
             self.model = None
 
+        self.modularity_table.value = self.model.quality_scores
+
         self.cc_heatmap.set_new_model(self.model)
 
         self.kr_selection.reset_choices()
@@ -1166,8 +1103,15 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
         self._cluster_run_selector.changed.connect(
             self.cc_heatmap.ks_selection.reset_choices
         )  # address in future
-        self.plot_tabs.addTab(self.cc_heatmap, "Cluster Score Plots")
-
+        self.plot_tabs.addTab(self.cc_heatmap, "Between-Cluster Score Plots")
+        
+        # tbl = {
+        #         label_name: labels,
+        #         self.DEFAULT_ANNOTATION_NAME: [None]
+        #         * len(labels),  # Make header editable
+        #     }
+        self.modularity_table = Table()
+        self.plot_tabs.addTab(self.modularity_table.native, "Modularity Scores")
         # K/R selection
         self.kr_selection = Container(layout="horizontal", labels=True)
         self.k_selection = ComboBox(

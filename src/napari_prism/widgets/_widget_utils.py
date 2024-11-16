@@ -223,7 +223,7 @@ class EditableTable(Table):
 
     def __init__(self, value, *args, **kwargs):
         value = self.drop_key_to_val(value)
-        super().__init__(*args, value=value**kwargs)
+        super().__init__(*args, value=value, **kwargs)
         self.init_ui()
 
     @staticmethod

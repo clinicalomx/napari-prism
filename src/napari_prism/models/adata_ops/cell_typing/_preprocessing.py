@@ -1,21 +1,90 @@
+""".pp module"""
 from collections.abc import Callable
-from functools import partial
-from typing import Optional, Union
-
+from functools import wraps
+from typing import Optional, Literal
+import loguru
 import anndata as ad
 import numpy as np
 import pandas as pd
-import scanpy as sc
 import scipy.stats as stats
 from anndata import AnnData
-from joblib import Parallel, delayed
+import importlib
 
+_current_backend = {"module": "scanpy"}
+sc_backend = importlib.import_module(_current_backend["module"])
+
+def set_backend(backend: Literal["cpu", "gpu"]) -> None:
+    """Set the backend to use for processing."""
+    global sc_backend
+    if backend == "cpu":
+        _current_backend["module"] = "scanpy"
+        loguru.logger.info("Setting backend to CPU with scanpy")
+    elif backend == "gpu":
+        try:
+            import rapids_singlecell # noqa F401
+            _current_backend["module"] = "rapids_singlecell"
+            loguru.logger.info("Setting backend to GPU with rapids_singlecell")
+        except ImportError as e:
+            raise ImportError("rapids_singlecell not installed") from e
+    else:
+        raise ValueError("Invalid backend. Must be 'cpu' or 'gpu'")
+
+    sc_backend = importlib.import_module(_current_backend["module"])
+
+def with_current_backend(function: Callable) -> Callable:
+    """Decorator to dynamically use current backend for scanpy-type functions.
+    Also trims keyword arguments to only those accepted by the function.
+    
+    If GPU backend is set, then function handles moving data to GPU memory.
+    After running the function, it always returns it back to CPU memory.
+
+    Args:
+        function: Scanpy or rapids_singlecell function to wrap.
+    
+    Returns:
+        Wrapped function.
+    """
+    @wraps(function)
+    def wrapper(adata, **kwargs):
+        backend = _current_backend["module"]
+        if backend == "rapids_singlecell":
+            sc_backend.get.anndata_to_GPU(adata)
+        
+        function_kwargs = trim_kwargs(kwargs, function)
+        result = function(adata, **function_kwargs)
+
+        if backend == "rapids_singlecell":
+            if result is None:
+                sc_backend.get.anndata_to_CPU(adata)
+            else:
+                sc_backend.get.anndata_to_CPU(result)
+
+        return result
+    
+    return wrapper
+
+def trim_kwargs(function_kwargs: dict, function: Callable) -> dict:
+    """Trim function_kwargs to only those accepted by function.
+    
+    Args:
+        function_kwargs: Keyword arguments to trim.
+        function: Function to trim keyword arguments for.
+    
+    Returns:
+        Trimmed keyword arguments.
+    """
+    return {
+        k: v
+        for k, v in function_kwargs.items()
+        if k in function.__code__.co_varnames
+    }
 
 def filter_by_obs_count(
     adata: AnnData,
     obs_col: str,
     min_value: float | None = None,
     max_value: float | None = None,
+    copy: bool = True,
 ) -> AnnData:
     """Filters cells which belong to a category in `AnnData.obs` with a cell
     count less than a `min_value` and/or more than a `max_value`. If layer is
@@ -24,14 +93,19 @@ def filter_by_obs_count(
     Args:
         adata: Anndata object.
         obs_col: `AnnData.obs` column to filter by.
-        min_value (optional): Minimum value to filter by.
-        max_value (optional): Maximum value to filter by.
+        min_value: Minimum value to filter by.
+        max_value: Maximum value to filter by.
+        copy: Return a copy instead of writing inplace.
 
     Returns:
-        Filtered AnnData object.
+        Filtered AnnData object. If `copy` is False, modifies the AnnData object
+        in place and returns None.
     """
     MIN_DEFAULT = 10
     MAX_DEFAULT = 1000000
+
+    if copy:
+        adata = adata.copy()
 
     if not isinstance(
         adata.obs[obs_col].dtype, pd.CategoricalDtype
@@ -55,14 +129,17 @@ def filter_by_obs_count(
     if max_value is not None:
         cells_by_obs = cells_by_obs[cells_by_obs < max_value]
 
-    return adata[adata.obs[obs_col].isin(cells_by_obs.index)]
+    adata = adata[adata.obs[obs_col].isin(cells_by_obs.index)]
 
+    if copy:
+        return adata
 
 def filter_by_obs_value(
     adata: AnnData,
     obs_col: str,
     min_value: float | None = None,
     max_value: float | None = None,
+    copy: bool = True,
 ) -> AnnData:
     """Filters cells which have a value of a given `AnnData.obs` column less
     than a `min_value` and/or more than a `max_value`.
@@ -70,15 +147,20 @@ def filter_by_obs_value(
     Args:
         adata: Anndata object.
         obs_col: `AnnData.obs` column to filter by.
-        min_value (optional): Minimum value to filter by.
-        max_value (optional): Maximum value to filter by.
+        min_value: Minimum value to filter by.
+        max_value: Maximum value to filter by.
+        copy: Return a copy instead of writing inplace.
 
     Returns:
-        Filtered AnnData object.
+        Filtered AnnData object. If `copy` is False, modifies the AnnData object
+        in place and returns None.
     """
 
     MIN_DEFAULT = 10
     MAX_DEFAULT = 100000  # 255 8 bit, 1 pixel below
+    
+    if copy:
+        adata = adata.copy()
 
     if isinstance(
         adata.obs[obs_col].dtype, pd.CategoricalDtype
@@ -100,14 +182,15 @@ def filter_by_obs_value(
     if max_value is not None:
         adata[adata.obs[obs_col] < max_value]
 
-    return adata
-
+    if copy:
+        return adata
 
 def filter_by_obs_quantile(
     adata: AnnData,
     obs_col: str,
     min_quantile: float | None = None,
     max_quantile: float | None = None,
+    copy: bool = True,
 ) -> AnnData:
     """Filters cells which have a value of a given `AnnData.obs` column less
     than the `min_quantile` and/or more than the `max_quantile`.
@@ -115,14 +198,19 @@ def filter_by_obs_quantile(
     Args:
         adata: Anndata object.
         obs_col: `AnnData.obs` column to filter by.
-        min_quantile (optional): Minimum quantile to filter by.
-        max_quantile (optional): Maximum quantile to filter by.
+        min_quantile: Minimum quantile to filter by.
+        max_quantile: Maximum quantile to filter by.
+        copy: Return a copy instead of writing inplace.
 
     Returns:
-        Filtered AnnData object.
+        Filtered AnnData object. If `copy` is False, modifies the AnnData object
+        in place and returns None.
     """
     MIN_DEFAULT = 0.1
     MAX_DEFAULT = 0.95
+
+    if copy:
+        adata = adata.copy()
 
     if isinstance(
         adata.obs[obs_col].dtype, pd.CategoricalDtype
@@ -152,8 +240,8 @@ def filter_by_obs_quantile(
         max_obs_val = np.quantile(adata.obs[obs_col], max_quantile)
         adata = adata[adata.obs[obs_col] < max_obs_val]
 
-    return adata
-
+    if copy:
+        return adata
 
 def filter_by_var_value(
     adata: AnnData,
@@ -161,6 +249,7 @@ def filter_by_var_value(
     min_value: float | None = None,
     max_value: float | None = None,
     layer: str | None = None,
+    copy: bool = True,
 ) -> AnnData:
     """Filters cells which have a value of a given `AnnData.var` column less
     than a `min_value` and/or more than a `max_value`.
@@ -168,15 +257,21 @@ def filter_by_var_value(
     Args:
         adata: Anndata object.
         var: `AnnData.var` column to filter by.
-        min_value (optional): Minimum value to filter by.
-        max_value (optional): Maximum value to filter by.
-        layer (optional): Expression layer to filter. Defaults to None (.X).
+        min_value: Minimum value to filter by.
+        max_value: Maximum value to filter by.
+        layer: Expression layer to filter.
+        copy: Return a copy instead of writing inplace.
+
 
     Returns:
-        Filtered AnnData object.
+        Filtered AnnData object. If `copy` is False, modifies the AnnData object
+        in place and returns None.
     """
     MIN_DEFAULT = 1  # 0 pixels above
     MAX_DEFAULT = 254  # 255 8 bit, 1 pixel below
+
+    if copy:
+        adata = adata.copy()
 
     assert var in adata.var_names
 
@@ -197,8 +292,8 @@ def filter_by_var_value(
     if max_value is not None:
         adata = adata[arr < max_value]
 
-    return adata
-
+    if copy:
+        return adata
 
 def filter_by_var_quantile(
     adata: AnnData,
@@ -206,6 +301,7 @@ def filter_by_var_quantile(
     min_quantile: float | None = None,
     max_quantile: float | None = None,
     layer: str | None = None,
+    copy: bool = True,
 ) -> AnnData:
     """Filters cells which have a value of a given `AnnData.var` column less
     than the `min_quantile` and/or more than the `max_quantile`.
@@ -213,13 +309,20 @@ def filter_by_var_quantile(
     Args:
         adata: Anndata object.
         var: `AnnData.var` column to filter by.
-        min_quantile (optional): Minimum quantile to filter by.
-        max_quantile (optional): Maximum quantile to filter by.
-        layer (optional): Expression layer to filter. Defaults to None (.X).
+        min_quantile: Minimum quantile to filter by.
+        max_quantile: Maximum quantile to filter by.
+        layer: Expression layer to filter.
+        copy: Return a copy instead of writing inplace.
 
+    Returns:
+        Filtered AnnData object. If `copy` is False, modifies the AnnData object
+        in place and returns None.
     """
     MIN_DEFAULT = 0.05
     MAX_DEFAULT = 0.99
+
+    if copy:
+        adata = adata.copy()
 
     assert var in adata.var_names
 
@@ -243,300 +346,211 @@ def filter_by_var_quantile(
         max_var_val = np.quantile(arr, max_quantile)
         adata = adata[arr < max_var_val]
 
-    return adata
+    if copy:
+        return adata
 
+def fill_na(
+    adata: AnnData,
+    fill_value: float = 0.0,
+    layer: str | None = None,
+    copy: bool = True,
+) -> AnnData:
+    """Fill NaNs in a given layer or .X with a given value.
 
-# TODO: Below class may be unnecessary / convert to static class
-class AnnDataProcessor:
-    """Processes an AnnData object. Performs transformations and generates
-    embeddings. CPU backend (scanpy)."""
+    Args:
+        adata: Anndata object.
+        fill_value: Value to fill NaNs with.
+        layer: Expression layer to fill NaNs.
+        copy: Return a copy instead of writing inplace.
+    
+    Returns:
+        AnnData object with NaNs filled. If `copy` is False, modifies the
+        AnnData object in place and returns None.
+    """
+    if copy:
+        adata = adata.copy()
 
-    transform_funcs = [
-        "arcsinh",
-        "scale",
-        "percentile",
-        "zscore",
-        "log1p",
-    ]
+    if layer is None:
+        adata.X = np.nan_to_num(adata.X, fill_value)
+    else:
+        adata.layers[layer] = np.nan_to_num(adata.layers[layer], fill_value)
 
-    def __init__(self, adata: AnnData | None) -> None:
-        self.adata = adata
+    if copy:
+        return adata
 
-        #: Tracks the applied functions and their parameters
-        self.applied_funcs = []
+@with_current_backend
+def log1p(
+    adata: AnnData,
+    copy: bool = True,
+    **kwargs
+) -> AnnData:
+    """Apply log1p transformation (natural log transform with pseudocount) to a
+    given layer or .X. Wraps `sc.pp.log1p` or `rsc.pp.log1p`. 
 
-    def set_X_to_raw(self):
-        """Set .X to .raw.X"""
-        self.adata.X = self.adata.raw.X.copy()
+    Args:
+        adata: Anndata object.
+        copy: Return a copy instead of writing inplace.
+        **kwargs: Additional keyword arguments to pass to `pp.log1p`.
+    
+    Returns:
+        New AnnData object with log1p transformation applied. If `copy` is
+            False, modifies the AnnData object in place and returns None.
+    """
+    return sc_backend.pp.log1p(adata, copy=copy, **kwargs)
 
-    def _warn_if_applied(self, partial_function):
-        # Trim inplace
-        WARN_MESSAGE = f"WARNING: Already applied {partial_function.func.__name__} to this set of adatas."
-        if partial_function.func in self.applied_funcs:
-            print(WARN_MESSAGE)
+def arcsinh(
+    adata: AnnData,
+    cofactor: float = 150,
+    layer: str | None = None,
+    copy: bool = True,
+) -> AnnData:
+    """Apply arcsinh transformation with a given cofactor to a given layer or
+    .X.
 
-    def _raise_error_if_applied(self, partial_function):
-        if partial_function.func in self.applied_funcs:
-            raise RuntimeError(
-                "Function already applied. Skipping operation..."
-            )
+    Args:
+        adata: Anndata object.
+        cofactor: Cofactor for arcsinh transformation. Defaults to 150.
+        layer: Expression layer to apply arcsinh transformation. If `None`, `X`
+            is transformed.
+        copy: Return a copy instead of writing inplace.
+    
+    Returns:
+        AnnData object with arcsinh transformation applied. If `copy` is False,
+        modifies the AnnData object in place and returns None.
+    """
+    if copy:
+        adata = adata.copy()
 
-    def _cache_applied_function(self, partial_function, tandem_apply):
-        if tandem_apply:
-            self._warn_if_applied(partial_function)
-        else:
-            self._raise_error_if_applied(partial_function)
-        # Add function, supplied params, and default params
-        function_name = partial_function.func.__name__
-        function_kwargs = partial_function.keywords
-        self.applied_funcs.append(
-            {function_name: function_kwargs}
-        )  # {function : {'a': val, 'b': val}}}
+    if layer is None:
+        adata.X = np.arcsinh(adata.X / cofactor)
+    else:
+        adata.layers[layer] = np.arcsinh(adata.layers[layer] / cofactor)
 
-    def _process(self, adata, attr, partial_function, returns=False):
-        if attr is None:
-            if returns:
-                return partial_function(adata)
-            else:
-                partial_function(adata)
-        else:
-            setattr(adata, attr, partial_function(getattr(adata, attr)))
-            if returns:
-                return adata
+    if copy:
+        return adata
 
-    def apply_all(
-        self,
-        function: Callable,
-        attr: Optional[str] = None,
-        tandem_apply: Optional[bool] = False,
-        **function_kwargs,
-    ) -> None:
-        """Apply functions to the entire AnnData object, or to a specific
-        attribute of the AnnData object.
+def zscore(
+    adata: AnnData,
+    layer: str | None = None,
+    copy: bool = True,
+) -> AnnData:
+    """Apply z-score transformation along the rows of a given layer or .X. Each
+    cell's expression across vars will be scored -1 to 1.
 
-        Args:
-            function: Function to apply.
-            attr: Attribute of the AnnData object to apply the function to.
-            tandem_apply: If True, allows the same function to be applied
-                multiple times.
-            **function_kwargs: Additional keyword arguments to pass to the
-                function.
-        """
-        # Freeze applied function
-        partial_function = partial(function, **function_kwargs)
-        # Save and log function
-        self._cache_applied_function(partial_function, tandem_apply)
-        self._process(self.adata, attr, partial_function, False)
+    i.e. A relative 'rank' of vars within each cell.
 
-    # Inject transformation method
-    def transform(self):
-        """Performs a typical transformation recipe suitable for CODEX/PCF
-        intensity-derived expression data on the contained AnnData object.
+    Args:
+        adata: Anndata object.
+        layer: Expression layer to apply z-score transformation. If `None`, `X`
+            is transformed.
+        copy: Return a copy instead of writing inplace.
 
-        1) Arcsinh normalisation, cofactor=150,
-        2) Scale columns and rows (0 mean, unit variance)
-        3) Z-score X expr. values along columns
-        """
-        # 1) Arcsinh
-        self.arcsinh_transform(cofactor=150)
-        # 2) Scale; care for scaling
-        self.scale_transform()
-        # 3) Z-score
-        self.zscore_transform()
+    Returns:
+        AnnData object with row-wise z-score transformation applied. If `copy`
+        is False, modifies the AnnData object in place and returns None.
+    """
+    if copy:
+        adata = adata.copy()
 
-    def fill_na(self, fill_val=0.0):
-        """Fill NaNs with a given value."""
-        self.apply_all(np.nan_to_num, attr="X", nan=fill_val)
+    if layer is None:
+        adata.X = stats.zscore(adata.X, axis=1)
+    else:
+        adata.layers[layer] = stats.zscore(adata.layers[layer], axis=1)
 
-    def log1p_transform(self):
-        """Log1p transformation"""
-        self.apply_all(np.log1p, attr="X")
+    if copy:
+        return adata
 
-    def arcsinh_transform(self, cofactor=150):
-        """CODEX/fusion transformation: Arcsinh normalisation, cofactor=150"""
-        print(
-            f"Applying arcsinh transformation with cofactor: {cofactor}",
-            flush=True,
-        )
+@with_current_backend
+def scale(
+    adata: AnnData,
+    layer: str | None = None,
+    copy: bool = True,
+    **kwargs
+) -> AnnData:
+    """Scale columns and rows to have 0 mean and unit variance in a given layer
+    or .X. Wraps `scanpy.pp.scale` or `rsc.pp.scale`.
 
-        def _arcsinh_transform(X, cofactor):
-            return np.arcsinh(X / cofactor)
+    Args:
+        adata: Anndata object.
+        layer: Expression layer to apply scale transformation. If `None`, `X` is
+            transformed.
+        copy: Return a copy instead of writing inplace.
+        **kwargs: Additional keyword arguments to pass to `pp.scale`.
+    
+    Returns:
+        AnnData object with scale transformation applied. If `copy` is False,
+        modifies the AnnData object in place and returns None
+    """
+    return sc_backend.pp.scale(adata, layer=layer, copy=copy, **kwargs)
 
-        self.apply_all(_arcsinh_transform, attr="X", cofactor=cofactor)
-        # self.apply_all(lambda x: np.arcsinh(x / cofactor), attr="X"
+def percentile(
+    adata: AnnData,
+    percentile: float = 95,
+    layer: str | None = None,
+    copy: bool = True,
+) -> AnnData:
+    """Normalise data to the 95th or 99th percentile. Axis = 0, or per column.
+    Wraps `np.percentile`.
+    
+    Args:
+        adata: Anndata object.
+        percentile: Percentile to normalise to. Defaults to 95.
+        layer (optional): Expression layer to apply percentile transformation.
+            If `None`, `X` is transformed.
+        copy: Return a copy instead of writing inplace.
+    
+    Returns:
+        AnnData object with percentile transformation applied. If `copy` is
+        False, modifies the AnnData object in place and returns None.
+    """
 
-    def zscore_transform(self):
-        """Z-score X expr. values along rows. A given cell's expression across all genes/markers will be scored -1 to 1"""
-        self.apply_all(stats.zscore, attr="X", axis=1)
+    def _percentile_transform(X, percentile, axis):
+        X = np.nan_to_num(X, 0)
+        min_val_per_axis = np.min(X, axis=axis)
+        percentile_val_per_axis = np.percentile(X, percentile, axis=axis)
+        # Below will return divide by 0 runtime error if trying to normalise
+        # a column with all 0s,
+        # to skip that, we replace the 0s with 1s, and then divide by 1s, which
+        # is the same as not dividing.
+        denominator = percentile_val_per_axis - min_val_per_axis
+        if np.any(denominator == 0):
+            denominator[denominator == 0] = 1
+        normalised_X = (X - min_val_per_axis) / denominator
+        return normalised_X
+    
+    if copy:
+        adata = adata.copy()
 
-    def scale_transform(self):
-        """Scale columns and rows (0 mean, unit variance)"""
-        self.apply_all(sc.pp.scale)
-        self.fill_na(0.0)  # Fill NaNs with 0s;
+    if layer is None:
+        adata.X = _percentile_transform(adata.X, percentile, axis=0)
+    else:
+        adata.layers[layer] = _percentile_transform(
+            adata.layers[layer], percentile, axis=0)
 
-    def percentile_transform(self, percentile=95):
-        """IMC data normalises to the 95th or 99th percentile. Axis = 0, or per column.
-        source: ..."""
-        assert percentile > 0  # avoid div by 0
+    if copy:
+        return adata
 
-        def _percentile_transform(X, percentile, axis):
-            X = np.nan_to_num(X, 0)
-            min_val_per_axis = np.min(X, axis=axis)
-            percentile_val_per_axis = np.percentile(X, percentile, axis=axis)
-            # Below will return divide by 0 runtime error if trying to normalise a column with all 0s,
-            # to skip that, we replace the 0s with 1s, and then divide by 1s, which is the same as not dividing.
-            denominator = percentile_val_per_axis - min_val_per_axis
-            if np.any(denominator == 0):
-                denominator[denominator == 0] = 1
-            normalised_X = (X - min_val_per_axis) / denominator
-            return normalised_X
+@with_current_backend
+def neighbors(
+    adata: AnnData,
+    copy: bool = True,
+    **kwargs,
+) -> AnnData:
+    """Compute a neighborhood graph in a given expression or embedding space.
+    Wrapper for `scanpy.pp.neighbors` or `rsc.pp.neighbors`.
 
-        self.apply_all(
-            _percentile_transform, attr="X", percentile=percentile, axis=0
-        )
+    Args:
+        adata: Anndata object.
+        copy: Return a copy of the modified AnnData object.
+        **kwargs: Additional keyword arguments to pass to `pp.neighbors`.
+    
+    Returns:
+        AnnData object with neighbors computed. If `copy` is False, modifies the
+        AnnData object in place and returns None.
+    """
+    return sc_backend.pp.neighbors(adata, copy=copy, **kwargs)
 
-    def call_transform(self, transform_name: str):
-        """Call a transform function by name."""
-        if transform_name in self.transform_funcs:
-            getattr(self, transform_name + "_transform")()
-        else:
-            raise ValueError(f"Invalid transform function: {transform_name}")
-
-    def trim_kwargs(self, function_kwargs, function):
-        """Trim function_kwargs to only those accepted by function."""
-        return {
-            k: v
-            for k, v in function_kwargs.items()
-            if k in function.__code__.co_varnames
-        }
-
-    def neighbors(self, **kwargs):
-        """Wrapper for `scanpy.pp.neighbors`."""
-        kwargs = self.trim_kwargs(kwargs, sc.pp.neighbors)
-        sc.pp.neighbors(self.adata, **kwargs)
-
-    def pca(self, **kwargs):
-        """Wrapper for `scanpy.tl.pca`."""
-        kwargs = self.trim_kwargs(kwargs, sc.tl.pca)
-        sc.tl.pca(self.adata, **kwargs)
-
-    def umap(self, **kwargs):
-        """Wrapper for `scanpy.tl.umap`."""
-        kwargs = self.trim_kwargs(kwargs, sc.tl.umap)
-        sc.tl.umap(self.adata, **kwargs)
-
-    def tsne(self, **kwargs):
-        """Wrapper for `scanpy.tl.tsne`."""
-        kwargs = self.trim_kwargs(kwargs, sc.tl.tsne)
-        sc.tl.tsne(self.adata, **kwargs)
-
-    def harmony(self, **kwargs):
-        """Wrapper for `scanpy.external.pp.harmony_integrate`."""
-        kwargs = self.trim_kwargs(kwargs, sc.external.pp.harmony_integrate)
-        sc.external.pp.harmony_integrate(
-            self.adata, **kwargs
-        )  # key=self.batch_key, max_iter_harmony=40)
-        self.harmonised = True
-
-
-class AnnDataProcessorGPU(AnnDataProcessor):
-    """GPU (rapids_singlecell) backend of AnnDataProcessor."""
-
-    def __init__(self, adata: AnnData, skip_init=False):
-        super().__init__(adata, skip_init)
-        self.check_if_GPU_version_installed()
-        self.expr_loc = "CPU"  # Additional attribute to track where the expr. values are stored
-
-    def check_if_GPU_version_installed(self):
-        """Check if rapids_singlecell is installed."""
-        try:
-            import rapids_singlecell  # type: ignore
-
-            self.rsc = rapids_singlecell
-
-        except ImportError as e:
-            raise ImportError("rapids_singlecell not installed") from e
-
-    def to_GPU(self):
-        """Move stored data structures (.X) to GPU*; similar to PyTorch."""
-        if self.expr_loc == "GPU":
-            print("X matrices already in GPU.")
-        else:
-            self.rsc.get.anndata_to_GPU(self.adata)
-            self.expr_loc = "GPU"
-
-    def to_CPU(self):
-        """Move .X back to CPU."""
-        if self.expr_loc == "CPU":
-            print("X matrices already in CPU.")
-        else:
-            self.rsc.get.anndata_to_CPU(self.adata)
-            self.expr_loc = "CPU"
-
-    def _check_if_rsc(self, partial_function):
-        return partial_function.func.__module__.startswith("rapids_singlecell")
-
-    def check_and_move_to_GPU(self):
-        """Moves data to GPU if not already there."""
-        if self.expr_loc == "CPU":  # Implicit data memory movement
-            self.to_GPU()
-
-    def check_and_move_to_CPU(self):
-        """Moves data to CPU if not already there."""
-        if self.expr_loc == "GPU":
-            self.to_CPU()
-
-    def pca(self, **kwargs):
-        """Wrapper for `rapids_singlecell.pp.pca`."""
-        kwargs = self.trim_kwargs(kwargs, self.rsc.tl.pca)
-        self.check_and_move_to_GPU(self.adata)
-        self.rsc.pp.pca(self.adata, **kwargs)
-
-    def neighbors(self, **kwargs):
-        """Wrapper for `rapids_singlecell.pp.neighbors`."""
-        kwargs = self.trim_kwargs(kwargs, self.rsc.pp.neighbors)
-        self.check_and_move_to_GPU(self.adata)
-        self.rsc.pp.neighbors(self.adata, **kwargs)
-
-    def umap(self, **kwargs):
-        """Wrapper for `rapids_singlecell.tl.umap`."""
-        kwargs = self.trim_kwargs(kwargs, self.rsc.tl.umap)
-        self.check_and_move_to_GPU(self.adata)
-        self.rsc.tl.umap(self.adata, **kwargs)
-
-    def tsne(self, **kwargs):
-        """Wrapper for `rapids_singlecell.tl.tsne`."""
-        kwargs = self.trim_kwargs(kwargs, self.rsc.tl.tsne)
-        self.check_and_move_to_GPU(self.adata)
-        self.rsc.tl.tsne(self.adata, **kwargs)
-
-    def harmony(self, **kwargs):
-        """Wrapper for `rapids_singlecell.pp.harmony_integrate`."""
-        kwargs = self.trim_kwargs(kwargs, self.rsc.pp.harmony_integrate)
-        self.rsc.pp.harmony_integrate(self.adata, **kwargs)
-        self.harmonised = True
-
-    def get_CPU_version(self):
-        """Returns a copy of the Processor object but with a CPU
-        (scanpy) backend."""
-        adata_processor_cpu = AnnDataProcessor(self.adata, skip_init=True)
-        adata_processor_cpu.applied_funcs = self.applied_funcs
-        adata_processor_cpu.harmonised = self.harmonised
-        return adata_processor_cpu
-
-
-def get_GPU_version(self, init_model: AnnDataProcessor) -> AnnDataProcessorGPU:
-    """Returns a copy of the Processor object but with a GPU
-    (rapids_singlecell / RAPIDS) backend."""
-    adata_processor_gpu = AnnDataProcessorGPU(init_model.adata, skip_init=True)
-    adata_processor_gpu.applied_funcs = init_model.applied_funcs
-    adata_processor_gpu.harmonised = init_model.harmonised
-    return adata_processor_gpu
-
-
-####################
-
-
+#TODO: Legacy/Deprecate
 def split_by_obs(
     adata: AnnData, obs_var: str, selections: Optional[list[str]] = None
 ):
@@ -555,255 +569,3 @@ def split_by_obs(
     print("" if selections is None else f"Got selections: {selections}")
 
     return adata_list, obs_var
-
-
-class AnnDataCollection:
-    """Processes Anndata objects the same way and in parallel."""
-
-    def __init__(
-        self, adatas: Union[list[AnnData], AnnData], obs_var: str = None
-    ):
-        self.adatas = adatas
-        self.batch_key = obs_var
-        self.merged = None
-        self.applied_funcs = []  # Track applied functions;
-        self.harmonised = False
-        self.determine_mulitple_state()
-
-    def determine_multiple_state(self):
-        """Track if collecting only a single or multiple AnnDatas"""
-        if len(self.adatas) == 1:
-            self.multiple = False
-        else:
-            self.multiple = True
-
-    def _apply_parallel(self, partial_function, attr):
-        if attr is None:
-            if partial_function.func.__module__.startswith("scanpy"):
-                partial_function = partial(partial_function, copy=True)
-            else:  # Assume pm
-                partial_function = partial(partial_function, inplace=False)
-        adatas = Parallel(n_jobs=len(self.adatas), prefer="processes")(
-            delayed(self._process)(adata, attr, partial_function, True)
-            for adata in self.adatas
-        )
-        self.adatas = adatas
-
-    def _apply_normal(self, partial_function, attr):
-        for adata in self.adatas:
-            self._process(adata, attr, partial_function, False)
-
-    def apply_all(
-        self,
-        function: Callable,
-        attr: Optional[str] = None,
-        parallelise: Optional[bool] = False,
-        tandem_apply: Optional[
-            bool
-        ] = False,  # If u can apply the same function twice in a row
-        **function_kwargs,
-    ):
-        """Apply functions to all instance of adata, or adata attrs."""
-        # apply the function to the adata inplace, or the attr and set attr.
-
-        # Freeze applied function
-        partial_function = partial(function, **function_kwargs)
-        # Save and log function
-        self._cache_applied_function(partial_function, tandem_apply)
-
-        # GIL; worker processes run in isolated memory spaces,
-        if parallelise:  # Then it must return the object, due to above
-            self._apply_parallel(partial_function, attr)
-
-        else:  # Below can do inplace memory ops.
-            self._apply_normal(partial_function, attr)
-
-    def subset_all(self, function: Callable, **function_kwargs):
-        """Same as apply_all, but for functions which change the shape of
-        AnnData. Some hard rules:
-            - Functions which change columns or .var shape must result in
-               the same number of columns across all AnnData objects.
-            - Functions must always return the AnnData object
-        Functions which change rows across AnnData objects are fine, as we
-        combine rows regardless into the final merged dataframe."""
-
-        def _check_columns_post_subset(adata, columns):
-            """Checks hard rule 1) above."""
-
-        def _check_rows_post_subset(adata, rows):
-            """If a row subset completely removes an AnnData, remove that
-            AnnData from the list."""
-
-        def _check_function_returns_adata(adata):
-            pass
-
-        # No parallel processing needed here
-        self.adatas = [
-            function(adata, **function_kwargs) for adata in self.adatas
-        ]
-
-    def concatenate_all(self):
-        """Ensure non-duplicate obs names."""
-        if self.merged is None:
-            self.merged = ad.concat(self.adatas)
-            self.merged.obs = self.merged.obs.reset_index(drop=True)
-            assert self.merged.obs.index.nunique() == self.merged.shape[0]
-        return self.merged
-
-    def check_pca(self, compute: bool, save_plot: str = None):
-        """Check embeddings if batch/diff adatas vary."""
-        if self.merged is None:
-            self.concatenate_all()
-
-        if compute and "X_pca" not in self.merged.obsm:
-            sc.tl.pca(self.merged)
-
-        if save_plot:
-            sc.pl.pca(self.merged, color=self.batch_key, save=save_plot)
-        else:
-            sc.pl.pca(self.merged, color=self.batch_key)
-
-    def harmonise_adatas(self):
-        """Sets the default PCA embedding to the harmonised one."""
-        if "X_pca" not in self.merged.obsm:
-            raise ValueError("Run pca first.")
-
-        sc.external.pp.harmony_integrate(
-            self.merged, key=self.batch_key, max_iter_harmony=40
-        )
-        self.merged.obsm["X_pca_d"] = self.merged.obsm["X_pca"]
-        self.merged.obsm["X_pca"] = self.merged.obsm["X_pca_harmony"]
-        self.harmonised = True
-
-    def get_GPU_version(self):
-        """Copy func"""
-        adata_collection_gpu = AnnDataCollectionGPU(
-            self.adatas, self.batch_key
-        )
-        adata_collection_gpu.applied_funcs = self.applied_funcs
-        adata_collection_gpu.merged = self.merged
-        adata_collection_gpu.harmonised = self.harmonised
-        return adata_collection_gpu
-
-
-class AnnDataCollectionGPU(AnnDataCollection):
-    """GPU backend of AnnDataCollection."""
-
-    def __init__(
-        self, adatas: Union[list[AnnData], AnnData], obs_var: str = None
-    ):
-        super().__init__(adatas, obs_var)
-        self.check_if_GPU_version_installed()
-        self.expr_loc = "CPU"  # Additional attribute to track where the expr. values are stored
-
-    def check_if_GPU_version_installed(self):
-        try:
-            import rapids_singlecell  # type: ignore
-
-            self.rsc = rapids_singlecell
-
-        except ImportError as e:
-            raise ImportError("rapids_singlecell not installed") from e
-
-    def to_GPU(self, which="all"):
-        """Move stored data structures (.X) to GPU*; similar to PyTorch."""
-        if self.expr_loc == "GPU":
-            print("X matrices already in GPU.")
-        else:
-            if which == "all":
-                for adata in self.adatas:
-                    self.rsc.get.anndata_to_GPU(adata)
-            elif which == "merged":
-                self.rsc.get.anndata_to_GPU(self.merged)
-            else:
-                raise ValueError("Invalid data var.")
-            self.expr_loc = "GPU"
-
-    def to_CPU(self, which="all"):
-        """Move .X back to CPU."""
-        if self.expr_loc == "CPU":
-            print("X matrices already in CPU.")
-        else:
-            if which == "all":
-                for adata in self.adatas:
-                    self.rsc.get.anndata_to_CPU(adata)
-            elif which == "merged":
-                self.rsc.get.anndata_to_CPU(self.merged)
-            else:
-                raise ValueError("Invalid data var.")
-            self.expr_loc = "CPU"
-
-    def _check_if_rsc(self, partial_function):
-        return partial_function.func.__module__.startswith("rapids_singlecell")
-
-    def _check_and_move_to_GPU(self, which):
-        if self.expr_loc == "CPU":  # Implicit data memory movement
-            self.to_GPU(which)
-
-    def _check_and_move_to_CPU(self, which):
-        if self.expr_loc == "GPU":
-            self.to_CPU(which)
-
-    # Overload
-    def _apply_parallel(self, partial_function, attr):
-        """Overloaded, checks if function is RSC/gpu, then raises error.
-        Here, simply raising NotImplementedError, since our operations
-        with parallel GPUs is likely overkill."""
-
-        if self._check_if_rsc(partial_function):
-            raise NotImplementedError(
-                "Parallel GPU implementations unsupported."
-            )
-
-        if attr is None:
-            if partial_function.func.__module__.startswith("scanpy"):
-                partial_function = partial(partial_function, copy=True)
-            else:  # Assume pm
-                partial_function = partial(partial_function, inplace=False)
-        adatas = Parallel(n_jobs=len(self.adatas), prefer="processes")(
-            delayed(self._process)(adata, attr, partial_function, True)
-            for adata in self.adatas
-        )
-        self.adatas = adatas
-
-    # Overload
-    def _apply_normal(self, partial_function, attr):
-        """Overloaded, checks if function is RSC/gpu, then implicitly checks
-        and moves data to GPU for computations."""
-
-        if self._check_if_rsc(partial_function):
-            self._check_and_move_to_GPU("all")
-
-        for adata in self.adatas:
-            self._process(adata, attr, partial_function, False)
-
-    def harmonise_adatas(self):
-        """Sets the default PCA embedding to the harmonised one."""
-        if "X_pca" not in self.merged.obsm:
-            raise ValueError("Run pca first.")
-
-        # CPU -> GPU
-        self._check_and_move_to_GPU("merged")
-
-        self.rsc.pp.harmony_integrate(
-            self.merged, key=self.batch_key, max_iter_harmony=40
-        )
-
-        self.merged.obsm["X_pca_d"] = self.merged.obsm["X_pca"]
-        self.merged.obsm["X_pca"] = self.merged.obsm["X_pca_harmony"]
-        self.harmonised = True
-
-        # GPU -> CPU
-        self._check_and_move_to_CPU("merged")
-
-
-def pcf_factory(adatas: list[AnnData], obs_var: str = None, use_gpu=False):
-    """Factory function to return the appropriate AnndataCollection object."""
-    if use_gpu:
-        print(f"Using GPU, supplying: {adatas}")
-        pcf_collection = AnnDataCollectionGPU(adatas, obs_var)
-    else:
-        print(f"Using CPU, supplying: {adatas}")
-        pcf_collection = AnnDataCollection(adatas, obs_var)
-
-    return pcf_collection

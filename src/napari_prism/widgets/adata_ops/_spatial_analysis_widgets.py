@@ -327,7 +327,7 @@ class NolanPlotWidget(QTabWidget):
                 inertia_results.reset_index(), x="k_kmeans", y="Inertia"
             )
             self.kneedle_plot.axes.axvline(
-                kneedle.knee,
+                self.knee_point,
                 linestyle="--",
                 label="knee/elbow",
             )
