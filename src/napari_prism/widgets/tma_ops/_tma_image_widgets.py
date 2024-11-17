@@ -159,7 +159,7 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
             # Inherit transformations from layer
             element = layer.metadata["sdata"][layer.metadata["name"]]
             transforms = get_transformation(element, "global")
-            print("adding shapes", gdf_recon)
+            #print("adding shapes", gdf_recon)
 
             self.model.add_shapes(
                 gdf_recon,

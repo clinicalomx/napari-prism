@@ -292,6 +292,9 @@ class PrismInteractive(Interactive):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._viewer.window.add_plugin_dock_widget(
+            "napari-spatialdata", "Scatter", tabify=True
+        )
+        self._viewer.window.add_plugin_dock_widget(
             "napari-prism", "TMA Image Analysis", tabify=True
         )
         self._viewer.window.add_plugin_dock_widget(
