@@ -163,7 +163,7 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
 
             self.model.add_shapes(
                 gdf_recon,
-                None,  # Overwrite;
+                layer.name,  # Overwrite;
                 write_element=True,
                 transformations={"global": transforms},
             )
@@ -1113,7 +1113,7 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
 
         self.model.measure_labels(
             labels=labels.data,
-            parent_anndata=labels.metadata["adata"],
+            parent_anndata=self.model.sdata[labels.name + "_tbl"],
             exported_table_name=labels.name + "_expression",  # TODO: widget
             tiling_shapes=data_sd,
             extended_properties=self._extended_properties_toggle.value,

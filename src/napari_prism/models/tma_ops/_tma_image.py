@@ -1902,6 +1902,7 @@ class TMASegmenter(MultiScaleImageOperations):
 
             # Prepare cellpose inputs
             channel_axis = 2 if optional_nuclear_channel else None
+            logger.info(f"Segmenting {len(image_tiles)} tiles", flush=True)
             results = self.cellpose_segmentation(
                 image=image_tiles,
                 model_type=model_type,
@@ -1913,6 +1914,7 @@ class TMASegmenter(MultiScaleImageOperations):
                 flow_threshold=flow_threshold,
                 custom_model=custom_model,
                 denoise_model=denoise_model,
+                progress=True,
                 **kwargs,
             )
 
@@ -1927,13 +1929,16 @@ class TMASegmenter(MultiScaleImageOperations):
             label_map = {}
 
             for i, bbox in enumerate(bboxes_rast):
+                ix = i + 1
                 logger.info(
-                    f"Processing bbox {i+1}/{len(bboxes_rast)}", flush=True
+                    f"Processing {bbox_labels[i]} {ix}/{len(bboxes_rast)}", 
+                    flush=True
                 )
                 xmin, ymin, xmax, ymax = bbox
-                # int32 to exceeed 65535 max
                 seg_mask = results["masks"][i].astype(np.int32)
+                logger.info(seg_mask)
                 seg_mask[seg_mask != 0] += current_max
+                logger.info(seg_mask)
                 global_seg_mask[xmin : xmax + 1, ymin : ymax + 1] = seg_mask
 
                 new_max = global_seg_mask.max()  # seg_mask.max()
@@ -1941,10 +1946,9 @@ class TMASegmenter(MultiScaleImageOperations):
                     i = -1
                 label_map[(current_max + 1, new_max)] = bbox_labels[i]
                 current_max = new_max
+                logger.info(f"New max {current_max}", flush=True)
                 if debug and i == -1:
                     break
-
-                logger.info(f"New max {current_max}", flush=True)
 
             # Add;
             transformation_sequence = Sequence(transformations)
