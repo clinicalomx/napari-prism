@@ -274,6 +274,12 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             label="Select shape to mask within",
         )
 
+        self._mask_channel_selection = Select(
+            name="MaskingChannels",
+            choices=self.get_channels,
+            label="Select channel(s) for masking",
+        )
+
         self._sigma_slider = create_widget(
             value=10,
             name="Gaussian Blur Sigma/Spread in um",
@@ -350,6 +356,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
         ls = [
             # self._inherit_correction_settings,
             self._bbox_shape_layer_selection,
+            self._mask_channel_selection,
             self._sigma_slider,
             self._expansion_slider,
             self._li_threshold_button,
@@ -391,7 +398,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
 
         scale = self.get_multiscale_image_scales()[self.scale_index]
         self.model.mask_tma_cores(
-            channel=self.get_channel(),
+            channel=self._mask_channel_selection.value, #self.get_channel()
             scale=scale,
             mask_selection=bbox_bounds,
             sigma_um=self._sigma_slider.value,
@@ -712,7 +719,7 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         self._segmentation_channel_selection = Select(
             name="SegmentationChannel",
             choices=self.get_channels,
-            label="Select channel for segmentation",
+            label="Select channel(s) for segmentation",
         )
 
         self._channel_merge_method_selection = ComboBox(

@@ -691,7 +691,7 @@ class TMAMasker(MultiScaleImageOperations):
 
     def mask_tma_cores(
         self,
-        channel: str,
+        channel: str | list[str],
         scale: str,
         mask_selection: tuple[int, int, int, int] | None = None,
         sigma_um: float | int = 10,
@@ -748,14 +748,14 @@ class TMAMasker(MultiScaleImageOperations):
         selected_channel_image = multichannel_image.sel(c=channel)
 
         # Apply image correction if supplied;
-        if (contrast_limits is not None) and (gamma is not None):
-            logger.info("Applying image correction")
-            logger.info(f"contrast_limits : {contrast_limits}")
-            logger.info(f"gamma : {gamma}")
+        # if (contrast_limits is not None) and (gamma is not None):
+        #     logger.info("Applying image correction")
+        #     logger.info(f"contrast_limits : {contrast_limits}")
+        #     logger.info(f"gamma : {gamma}")
 
-            selected_channel_image = self.apply_image_correction(
-                selected_channel_image, contrast_limits, gamma
-            )
+        #     selected_channel_image = self.apply_image_correction(
+        #         selected_channel_image, contrast_limits, gamma
+        #     )
 
         ds_factor = self.get_downsampling_factor(selected_channel_image)
 
@@ -800,15 +800,33 @@ class TMAMasker(MultiScaleImageOperations):
         expansion_px /= ds_factor
         estimated_core_diameter_px /= ds_factor
 
-        initial_masks = self.generate_blurred_masks(
-            selected_channel_image,
-            sigma_px=sigma_px,
-            expansion_px=expansion_px,
-            li_threshold=li_threshold,
-            edge_filter=edge_filter,
-            adapt_hist=adapt_hist,
-            gamma_correct=gamma_correct,
-        )
+        if isinstance(channel, list):
+            # Perform a mask on each channel, sum the binary masks to perform a
+            # 'merge'
+            initial_masks = np.zeros(selected_channel_image.shape[1:])
+            for c in channel:
+                channel_mask = self.generate_blurred_masks(
+                    selected_channel_image.sel(c=c),
+                    sigma_px=sigma_px,
+                    expansion_px=expansion_px,
+                    li_threshold=li_threshold,
+                    edge_filter=edge_filter,
+                    adapt_hist=adapt_hist,
+                    gamma_correct=gamma_correct,
+                )
+                initial_masks += channel_mask # max intensity projection
+                initial_masks = initial_masks > 0
+                initial_masks = initial_masks.astype(np.int32)
+        else:
+            initial_masks = self.generate_blurred_masks(
+                selected_channel_image,
+                sigma_px=sigma_px,
+                expansion_px=expansion_px,
+                li_threshold=li_threshold,
+                edge_filter=edge_filter,
+                adapt_hist=adapt_hist,
+                gamma_correct=gamma_correct,
+            )
 
         # TODO: below is stilll quite slow, likely to do with transformation
         channel_label = (
@@ -1696,9 +1714,9 @@ class TMASegmenter(MultiScaleImageOperations):
         gpu = core.use_gpu()
 
         # Check if macos + mps
-        if not gpu and torch.backends.mps.is_available():
+        if torch.backends.mps.is_available():
             gpu = True
-            device = "mps"
+            device = torch.device("mps")
             logger.info("Using MPS")
 
         # TODO: refine these checks
@@ -1856,7 +1874,9 @@ class TMASegmenter(MultiScaleImageOperations):
         else:
             # Extract tiles
             # Assume geometries exist in "global" and scale0
+            # TODO: Apply `upscale_transformations` to geoms / tiling_shapes
             geoms = tiling_shapes["geometry"]
+            
             bboxes = [x.bounds for x in geoms]
             bboxes_rast = [[int(z) for z in x] for x in bboxes]
             if debug:
@@ -1903,7 +1923,6 @@ class TMASegmenter(MultiScaleImageOperations):
             global_seg_mask = np.empty(working_shape, dtype=np.int32)
 
             # Repack results into global image
-            # TODO: seg + added
             current_max = 0
             label_map = {}
 
@@ -1912,17 +1931,22 @@ class TMASegmenter(MultiScaleImageOperations):
                     f"Processing bbox {i+1}/{len(bboxes_rast)}", flush=True
                 )
                 xmin, ymin, xmax, ymax = bbox
-                seg_mask = results["masks"][i]
+                # int32 to exceeed 65535 max 
+                seg_mask = results["masks"][i].astype(np.int32)
                 seg_mask[seg_mask != 0] += current_max
-                global_seg_mask[xmin : xmax + 1, ymin : ymax + 1] = seg_mask
+                global_seg_mask[xmin:xmax+1, ymin:ymax+1] = seg_mask
 
-                new_max = seg_mask.max()
+                new_max = global_seg_mask.max() #seg_mask.max()
                 if debug and i == 1:
                     i = -1
                 label_map[(current_max + 1, new_max)] = bbox_labels[i]
                 current_max = new_max
                 if debug and i == -1:
                     break
+
+                logger.info(
+                    f"New max {current_max}", flush=True
+                )
 
             # Add;
             transformation_sequence = Sequence(transformations)
