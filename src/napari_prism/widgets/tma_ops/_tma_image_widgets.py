@@ -398,7 +398,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
 
         scale = self.get_multiscale_image_scales()[self.scale_index]
         self.model.mask_tma_cores(
-            channel=self._mask_channel_selection.value, #self.get_channel()
+            channel=self._mask_channel_selection.value,  # self.get_channel()
             scale=scale,
             mask_selection=bbox_bounds,
             sigma_um=self._sigma_slider.value,

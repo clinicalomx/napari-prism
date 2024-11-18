@@ -814,7 +814,7 @@ class TMAMasker(MultiScaleImageOperations):
                     adapt_hist=adapt_hist,
                     gamma_correct=gamma_correct,
                 )
-                initial_masks += channel_mask # max intensity projection
+                initial_masks += channel_mask  # max intensity projection
                 initial_masks = initial_masks > 0
                 initial_masks = initial_masks.astype(np.int32)
         else:
@@ -1876,7 +1876,7 @@ class TMASegmenter(MultiScaleImageOperations):
             # Assume geometries exist in "global" and scale0
             # TODO: Apply `upscale_transformations` to geoms / tiling_shapes
             geoms = tiling_shapes["geometry"]
-            
+
             bboxes = [x.bounds for x in geoms]
             bboxes_rast = [[int(z) for z in x] for x in bboxes]
             if debug:
@@ -1931,12 +1931,12 @@ class TMASegmenter(MultiScaleImageOperations):
                     f"Processing bbox {i+1}/{len(bboxes_rast)}", flush=True
                 )
                 xmin, ymin, xmax, ymax = bbox
-                # int32 to exceeed 65535 max 
+                # int32 to exceeed 65535 max
                 seg_mask = results["masks"][i].astype(np.int32)
                 seg_mask[seg_mask != 0] += current_max
-                global_seg_mask[xmin:xmax+1, ymin:ymax+1] = seg_mask
+                global_seg_mask[xmin : xmax + 1, ymin : ymax + 1] = seg_mask
 
-                new_max = global_seg_mask.max() #seg_mask.max()
+                new_max = global_seg_mask.max()  # seg_mask.max()
                 if debug and i == 1:
                     i = -1
                 label_map[(current_max + 1, new_max)] = bbox_labels[i]
@@ -1944,9 +1944,7 @@ class TMASegmenter(MultiScaleImageOperations):
                 if debug and i == -1:
                     break
 
-                logger.info(
-                    f"New max {current_max}", flush=True
-                )
+                logger.info(f"New max {current_max}", flush=True)
 
             # Add;
             transformation_sequence = Sequence(transformations)
