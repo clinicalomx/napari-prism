@@ -1931,8 +1931,8 @@ class TMASegmenter(MultiScaleImageOperations):
             for i, bbox in enumerate(bboxes_rast):
                 ix = i + 1
                 logger.info(
-                    f"Processing {bbox_labels[i]} {ix}/{len(bboxes_rast)}", 
-                    flush=True
+                    f"Processing {bbox_labels[i]} {ix}/{len(bboxes_rast)}",
+                    flush=True,
                 )
                 xmin, ymin, xmax, ymax = bbox
                 seg_mask = results["masks"][i].astype(np.int32)
