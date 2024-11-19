@@ -233,6 +233,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
         if (
             selected is not None
             and "sdata" in selected.metadata
+            and isinstance(selected, napari.layers.Image)
             and isinstance(
                 selected.data, napari.layers._multiscale_data.MultiScaleData
             )
@@ -536,6 +537,9 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
             selected is not None
             and "sdata" in selected.metadata
             and isinstance(selected, napari.layers.Labels)
+            and not isinstance(
+                selected.data, napari.layers._multiscale_data.MultiScaleData
+            )
         ):
             self.model = TMADearrayer(
                 selected.metadata["sdata"], selected.metadata["name"]
@@ -663,6 +667,7 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         if (
             selected is not None
             and "sdata" in selected.metadata
+            and isinstance(selected, napari.layers.Image)
             and isinstance(
                 selected.data, napari.layers._multiscale_data.MultiScaleData
             )
@@ -677,6 +682,14 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             self.reset_choices()
             self._run_segmentation_button.enabled = False
 
+    def get_multiscale_image_shapes(self, widget=None):
+        """TODO: temp solution. Until lower scale segmentation is implemented
+        and revisited."""
+        shapes = super().get_multiscale_image_shapes(widget)
+        if shapes != [None]:
+            return [shapes[-1]]
+        return shapes
+    
     def create_parameter_widgets(self):
         super().create_parameter_widgets()
 
@@ -1113,7 +1126,7 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
 
         self.model.measure_labels(
             labels=labels.data,
-            parent_anndata=self.model.sdata[labels.name + "_tbl"],
+            parent_anndata=self.model.sdata[labels.name + "_expression"],
             exported_table_name=labels.name + "_expression",  # TODO: widget
             tiling_shapes=data_sd,
             extended_properties=self._extended_properties_toggle.value,

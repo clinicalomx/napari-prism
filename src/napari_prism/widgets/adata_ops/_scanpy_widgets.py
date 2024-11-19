@@ -11,6 +11,7 @@ from napari.utils.colormaps import label_colormap
 from qtpy.QtWidgets import QWidget
 
 from napari_prism import pp, tl
+from napari_prism.constants import CELL_INDEX_LABEL
 from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._plot_widgets import GeneralMPLWidget
@@ -568,12 +569,12 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         keys for batch correction. These keys usually have a 1:N relation to
         the cells in the AnnData object (i.e. multiple cells per category).
         """
-        if self.adata is None or "index" not in self.adata.obs.columns:
+        if self.adata is None or CELL_INDEX_LABEL not in self.adata.obs.columns:
             return []
 
         else:
             available_batch_keys = list(
-                ObsHelper.get_duplicated_keys(self.adata, "index")
+                ObsHelper.get_duplicated_keys(self.adata, CELL_INDEX_LABEL)
             )
             return available_batch_keys
 

@@ -6,6 +6,7 @@ from anndata import AnnData
 from magicgui.widgets import ComboBox
 from spatialdata import SpatialData
 
+from napari_prism.constants import CELL_INDEX_LABEL
 from napari_prism.widgets._widget_utils import (
     BaseNapariWidget,
     get_layer_index_by_name,
@@ -41,7 +42,7 @@ class AnnDataOperatorWidget(BaseNapariWidget):
         self.sdata = sdata
         self.adata = adata
         self.cell_label_column = (
-            "index"  # This is the default column for cell labels
+            CELL_INDEX_LABEL  # This is the default column for cell labels
         )
         self.__class__._instances.append(self)
 

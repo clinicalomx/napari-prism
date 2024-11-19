@@ -36,11 +36,17 @@ from spatialdata.models.models import Schema_t
 from spatialdata.transformations import (
     BaseTransformation,
     Scale,
+    Affine,
     Sequence,
     Translation,
     get_transformation_between_coordinate_systems,
+    set_transformation
 )
 from xarray import DataArray
+from napari_prism.constants import (
+    DEFAULT_MULTISCALE_DOWNSCALE_FACTORS,
+    CELL_INDEX_LABEL
+)
 
 # For cellpose api
 try:
@@ -448,7 +454,7 @@ class MultiScaleImageOperations(SdataImageOperations):
     def get_image(self) -> DataTree:
         """Get the image pyramid/DataTree. Checks done here to ensure retrieved
         image is of the right type (Multiscale DataTree)"""
-        msi = self.sdata.images[self.image_name]
+        msi = self.sdata[self.image_name]
         if not isinstance(msi, DataTree):
             raise ValueError("Image is not a multiscale image")
         return msi
@@ -1774,11 +1780,23 @@ class TMASegmenter(MultiScaleImageOperations):
 
         return results_dict
 
+    def segment_selection(
+        self,
+        scale: str,
+        segmentation_channel: str | list[str],
+        model_type: CP_DEFAULT_MODELS_typed,
+        nuclei_diam_um: float,
+        channel_merge_method: Literal["max", "mean", "sum", "median"] = "max",
+    ):
+        """Perform cell segmentation on a select subset region(s) of the given
+        image. """
+        raise NotImplementedError("Not implemented yet")
+
     def segment_all(
         self,
         scale: str,
         segmentation_channel: str | list[str],
-        tiling_shapes: gpd.GeoDataFrame,
+        tiling_shapes: gpd.GeoDataFrame | None,
         model_type: CP_DEFAULT_MODELS_typed,
         nuclei_diam_um: float,
         channel_merge_method: Literal["max", "mean", "sum", "median"] = "max",
@@ -1800,6 +1818,9 @@ class TMASegmenter(MultiScaleImageOperations):
         """Perform cell segmentation on the given image using cellpose. Writes
         the segmentation results as label elements to the underlying sdata
         object. Also writes a table of the segmentation instances (cells).
+
+        If `tiling_shapes` is specified, then multiple `Labels` are ALSO created
+        for every region in `tiling_shapes`.
 
         Args:
             scale: The scale to segment.
@@ -1872,86 +1893,167 @@ class TMASegmenter(MultiScaleImageOperations):
             return input_image
 
         else:
+            # Prepare cellpose inputs
+            channel_axis = 2 if optional_nuclear_channel else None
+            transformation_sequence = Sequence(transformations)
+
             # Extract tiles
             # Assume geometries exist in "global" and scale0
             # TODO: Apply `upscale_transformations` to geoms / tiling_shapes
-            geoms = tiling_shapes["geometry"]
+            if tiling_shapes is not None:
+                geoms = tiling_shapes["geometry"]
 
-            bboxes = [x.bounds for x in geoms]
-            bboxes_rast = [[int(z) for z in x] for x in bboxes]
-            if debug:
-                bboxes_rast = [bboxes_rast[0], bboxes_rast[-1]]
-            if (
-                tiling_shapes_annotation_column
-                and tiling_shapes_annotation_column in tiling_shapes.columns
-            ):
-                bbox_labels = list(
-                    tiling_shapes[tiling_shapes_annotation_column]
-                )
-            else:
-                bbox_labels = list(geoms.index)
+                bboxes = [x.bounds for x in geoms]
+                bboxes_rast = [[int(z) for z in x] for x in bboxes]
+                if debug:
+                    bboxes_rast = [bboxes_rast[0], bboxes_rast[-1]]
+                if (
+                    tiling_shapes_annotation_column
+                    and tiling_shapes_annotation_column in tiling_shapes.columns
+                ):
+                    bbox_labels = list(
+                        tiling_shapes[tiling_shapes_annotation_column]
+                    )
+                else:
+                    bbox_labels = list(geoms.index)
 
-            # Prepare image tiles
-            image_tiles = []
-            for bbox in bboxes_rast:
-                xmin, ymin, xmax, ymax = bbox
-                tile = input_image.isel(
-                    x=slice(xmin, xmax + 1), y=slice(ymin, ymax + 1)
-                )
-                image_tiles.append(tile.data)  # append the numpy/dask array
+                # Prepare image tiles
+                image_tiles = []
+                for bbox in bboxes_rast:
+                    xmin, ymin, xmax, ymax = bbox
+                    tile = input_image.isel(
+                        x=slice(xmin, xmax + 1), y=slice(ymin, ymax + 1)
+                    )
+                    image_tiles.append(tile.data)  # append the numpy/dask array
 
-            # Prepare cellpose inputs
-            channel_axis = 2 if optional_nuclear_channel else None
-            logger.info(f"Segmenting {len(image_tiles)} tiles", flush=True)
-            results = self.cellpose_segmentation(
-                image=image_tiles,
-                model_type=model_type,
-                channels=input_channels_cellpose,
-                channel_axis=channel_axis,
-                nuclei_diam_um=nuclei_diam_um,
-                normalize=normalize,
-                cellprob_threshold=cellprob_threshold,
-                flow_threshold=flow_threshold,
-                custom_model=custom_model,
-                denoise_model=denoise_model,
-                progress=True,
-                **kwargs,
-            )
-
-            working_shape = (
-                multichannel_image.sizes["x"],
-                multichannel_image.sizes["y"],
-            )
-            global_seg_mask = np.empty(working_shape, dtype=np.int32)
-
-            # Repack results into global image
-            current_max = 0
-            label_map = {}
-
-            for i, bbox in enumerate(bboxes_rast):
-                ix = i + 1
                 logger.info(
-                    f"Processing {bbox_labels[i]} {ix}/{len(bboxes_rast)}",
-                    flush=True,
+                    f"Segmenting {len(image_tiles)} regions", flush=True)
+                results = self.cellpose_segmentation(
+                    image=image_tiles,
+                    model_type=model_type,
+                    channels=input_channels_cellpose,
+                    channel_axis=channel_axis,
+                    nuclei_diam_um=nuclei_diam_um,
+                    normalize=normalize,
+                    cellprob_threshold=cellprob_threshold,
+                    flow_threshold=flow_threshold,
+                    custom_model=custom_model,
+                    denoise_model=denoise_model,
+                    progress=True,
+                    **kwargs,
                 )
-                xmin, ymin, xmax, ymax = bbox
-                seg_mask = results["masks"][i].astype(np.int32)
-                logger.info(seg_mask)
-                seg_mask[seg_mask != 0] += current_max
-                logger.info(seg_mask)
-                global_seg_mask[xmin : xmax + 1, ymin : ymax + 1] = seg_mask
 
-                new_max = global_seg_mask.max()  # seg_mask.max()
-                if debug and i == 1:
-                    i = -1
-                label_map[(current_max + 1, new_max)] = bbox_labels[i]
-                current_max = new_max
-                logger.info(f"New max {current_max}", flush=True)
-                if debug and i == -1:
-                    break
+                # Repack results into global image
+                current_max = 0
+                label_map = {}
+                local_tables = []
+                working_shape = (
+                    multichannel_image.sizes["x"],
+                    multichannel_image.sizes["y"],
+                )
+                global_seg_mask = np.empty(working_shape, dtype=np.int32)
+                for i, bbox in enumerate(bboxes_rast):
+                    ix = i + 1
+                    logger.info(
+                        f"Processing {bbox_labels[i]} {ix}/{len(bboxes_rast)}",
+                        flush=True,
+                    )
+                    xmin, ymin, xmax, ymax = bbox
+                    seg_mask = results["masks"][i].astype(np.int32)
+                    logger.info(seg_mask)
+                    seg_mask[seg_mask != 0] += current_max
+                    logger.info(seg_mask)
+                    
+                    # Save as distinct cs's; NOTE: data duplication revisit this
+                    affine_matrix = np.array(
+                        [
+                            [1, 0, xmin],
+                            [0, 1, ymin],
+                            [0, 0, 1],
+                        ]
+                    )
+                    bbox_map = Affine(affine_matrix, ("x", "y"), ("x", "y"))
+                    subset_translation = Translation(
+                        [xmin, ymin], axes=("x", "y"))
+                    local_transformation_sequence = Sequence(
+                        transformations + [subset_translation]
+                    )
+                    #NOTE: below future implementation
+                    # self.add_label(
+                    #     seg_mask,
+                    #     self.image_name + f"_labels_{bbox_labels[i]}",
+                    #     write_element=True,
+                    #     dims=("x", "y"),
+                    #     transformations={
+                    #         "global": local_transformation_sequence,
+                    #         bbox_labels[i]: bbox_map,
+                    #         },
+                    #     scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS,
+                    # )
+                    local_seg_table = pd.DataFrame(
+                        index=range(1, 1 + seg_mask.max()))
+                    local_seg_table = local_seg_table.reset_index(
+                        names=CELL_INDEX_LABEL)
+                    local_seg_table["tma_label"] = (
+                        self.image_name + "_labels" + "_" + bbox_labels[i]
+                    )
+                    str_index = (
+                        local_seg_table[CELL_INDEX_LABEL].astype(str) 
+                        + "_" + bbox_labels[i]
+                    )
+                    local_seg_table.index = str_index.values
+                    local_seg_table["lyr"] = self.image_name + "_labels"
+                    local_tables.append(local_seg_table)
 
-            # Add;
-            transformation_sequence = Sequence(transformations)
+                    # Append to global mask for a one-click all
+                    global_seg_mask[xmin : xmax + 1, ymin : ymax + 1] = seg_mask
+
+                    new_max = global_seg_mask.max()  # seg_mask.max()
+                    if debug and i == 1:
+                        i = -1
+                    label_map[(current_max + 1, new_max)] = bbox_labels[i]
+                    logger.info(f"Current max{current_max}", flush=True)
+                    current_max = new_max
+                    logger.info(f"New max {current_max}", flush=True)
+                    if debug and i == -1:
+                        break
+                
+                seg_table = pd.concat(local_tables)
+
+            # Tiling shapes is none,
+            else:
+                logger.info(
+                    f"Segmenting entirety of {len(self.image_Name)}", 
+                    flush=True
+                )
+                results = self.cellpose_segmentation(
+                    image=input_image,
+                    model_type=model_type,
+                    channels=input_channels_cellpose,
+                    channel_axis=channel_axis,
+                    nuclei_diam_um=nuclei_diam_um,
+                    normalize=normalize,
+                    cellprob_threshold=cellprob_threshold,
+                    flow_threshold=flow_threshold,
+                    custom_model=custom_model,
+                    denoise_model=denoise_model,
+                    progress=True,
+                    **kwargs,
+                )
+                global_seg_mask = results["masks"][i].astype(np.int32)
+                transformation_sequence = Sequence(transformations)
+                seg_table = pd.DataFrame(
+                    index=range(1, 1 + global_seg_mask.max()))
+                seg_table = seg_table.reset_index(
+                    names=CELL_INDEX_LABEL)
+                seg_table["tma_label"] = "global"
+                str_index = (
+                    seg_table[CELL_INDEX_LABEL].astype(str)
+                    + "_global"
+                )
+                seg_table.index = str_index.values
+                seg_table["lyr"] = self.image_name + "_labels"
+
             self.add_label(
                 global_seg_mask,
                 self.image_name + "_labels",
@@ -1960,38 +2062,15 @@ class TMASegmenter(MultiScaleImageOperations):
                 transformations={"global": transformation_sequence},
             )
 
-            # TODO: some errors/bugs below not all boxes are being segmented or
-            # assigned..
-            interval_index = pd.IntervalIndex.from_tuples(
-                list(label_map.keys()), closed="both"
-            )
-            label = list(label_map.values())
-            seg_table = pd.DataFrame(index=range(1, 1 + global_seg_mask.max()))
-            seg_table["region_label"] = pd.cut(
-                seg_table.index,
-                bins=interval_index,
-                labels=label,
-                include_lowest=True,
-            )
-            interval_to_label = dict(
-                zip(interval_index, label_map.values(), strict=False)
-            )
-
-            seg_table["region_label"] = seg_table["region_label"].map(
-                interval_to_label
-            )
-
-            seg_table["lyr"] = self.image_name + "_labels"
-            seg_table = seg_table.reset_index()
             self.add_table(
                 seg_table,
-                "labels_tbl",
+                "labels_expression",
                 write_element=True,
-                region=self.image_name + "_labels",
+                #TODO: future -> seg_table["tma_label"].unique().tolist()
+                region=self.image_name + "_labels", # or none
                 region_key="lyr",
-                instance_key="index",
+                instance_key=CELL_INDEX_LABEL,
             )
-
 
 class TMAMeasurer(MultiScaleImageOperations):
     """Class for measuring statistics of cells in TMA cores. Uses skimage.
@@ -2152,8 +2231,12 @@ class TMAMeasurer(MultiScaleImageOperations):
         # If AnnData is featureless
         else:
             # Check if every cell / obj is measured
-            assert intensities.shape[0] == parent_anndata.shape[0]
-            assert obs_like.shape[0] == parent_anndata.shape[0]
+            if intensities.shape[0] == parent_anndata.shape[0]:
+                intensities.to_csv("intensities.csv")
+                parent_anndata.to_csv("parent.csv")
+            if obs_like.shape[0] == parent_anndata.shape[0]:
+                obs_like.to_csv("obs_like.csv")
+                parent_anndata.to_csv("parent.csv")
             # Inherit
             previous_obs = parent_anndata.obs
             previous_uns = parent_anndata.uns

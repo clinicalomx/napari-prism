@@ -206,8 +206,11 @@ class AnnDataAnalysisParentWidget(QWidget):
         return [
             x.name
             for x in self.viewer.layers
+            # if isinstance(
+            #     x.data, napari.layers._multiscale_data.MultiScaleData
+            # )
             if isinstance(
-                x.data, napari.layers._multiscale_data.MultiScaleData
+                x.data, napari.layers.Labels
             )
             and "sdata" in x.metadata
             and x.metadata["sdata"] is not None

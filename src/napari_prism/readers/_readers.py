@@ -15,7 +15,7 @@ from napari_spatialdata import Interactive
 from spatialdata import SpatialData
 from spatialdata.models import Image2DModel
 from spatialdata.transformations import Identity, Scale
-
+from napari_prism.constants import DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 
 class QptiffLoader(ABC):
     META_ORDER = []
@@ -143,7 +143,7 @@ class QptiffLoader(ABC):
         # downscale_factors determine pyramidal downscaling of qptiff img;
         # /2 -> /4 -> /8 -> /16
         if downscale_factors is None:
-            downscale_factors = [2, 2, 2, 2]
+            downscale_factors = DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
         transformations = {}
         transformations["global"] = Identity()
         # transformations["scale0"] = Identity()
