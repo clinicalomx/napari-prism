@@ -1577,8 +1577,24 @@ class TMADearrayer(SingleScaleImageOperations):
         grid_labels = np.vstack([grid_labels, new_row])
         self.grid_labels = grid_labels
 
-    def remove_tma_row(self) -> None:
+    def remove_tma_row(self, row_index) -> None:
         """Remove a row from the TMA grid representation."""
+        raise NotImplementedError("Not implemented yet")
+    
+    def append_tma_column(self) -> None:
+        """Append a new column to the TMA grid representation."""
+        raise NotImplementedError("Not implemented yet")
+    
+    def remove_tma_column(self, column_index) -> None:
+        """Remove a column from the TMA grid representation."""
+        raise NotImplementedError("Not implemented yet")
+
+    def add_tma_core(self, geometry, row_index, column_index) -> None:
+        """Add a TMA core to the TMA grid representation."""
+        raise NotImplementedError("Not implemented yet")
+    
+    def remove_tma_core(self, row_index, column_index) -> None:
+        """Remove a TMA core from the TMA grid representation."""
         raise NotImplementedError("Not implemented yet")
 
     # Below operate on the relational df
