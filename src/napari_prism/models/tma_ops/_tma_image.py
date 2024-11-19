@@ -34,7 +34,6 @@ from spatialdata.models import (
 )
 from spatialdata.models.models import Schema_t
 from spatialdata.transformations import (
-    Affine,
     BaseTransformation,
     Scale,
     Sequence,
@@ -1967,24 +1966,24 @@ class TMASegmenter(MultiScaleImageOperations):
                     seg_mask[seg_mask != 0] += current_max
                     logger.info(seg_mask)
 
-                    # Save as distinct cs's; NOTE: data duplication revisit this
-                    affine_matrix = np.array(
-                        [
-                            [1, 0, xmin],
-                            [0, 1, ymin],
-                            [0, 0, 1],
-                        ]
-                    )
-                    
-                    subset_translation = Translation(
-                        [xmin, ymin], axes=("x", "y")
-                    )
                     # NOTE: below future implementation
+                    # Save as distinct cs's; NOTE: data duplication revisit this
+                    # affine_matrix = np.array(
+                    #     [
+                    #         [1, 0, xmin],
+                    #         [0, 1, ymin],
+                    #         [0, 0, 1],
+                    #     ]
+                    # )
+
+                    # subset_translation = Translation(
+                    #     [xmin, ymin], axes=("x", "y")
+                    # )
                     # bbox_map = Affine(affine_matrix, ("x", "y"), ("x", "y"))
                     # local_transformation_sequence = Sequence(
                     #     transformations + [subset_translation]
                     # )
-                    
+
                     # self.add_label(
                     #     seg_mask,
                     #     self.image_name + f"_labels_{bbox_labels[i]}",

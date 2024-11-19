@@ -64,7 +64,7 @@ class SdataImageNapariWidget(BaseNapariWidget):
         before_cs = {
             cs for sdata in cs_widget._sdata for cs in sdata.coordinate_systems
         }
-        items = set(cs_widget.item(i).text() for i in range(cs_widget.count()))
+        items = {cs_widget.item(i).text() for i in range(cs_widget.count())}
         new_cs = items - before_cs
         if new_cs:
             cs_widget.addItems(new_cs)
