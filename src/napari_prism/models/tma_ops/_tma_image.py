@@ -1614,6 +1614,7 @@ class TMADearrayer(SingleScaleImageOperations):
     #     self._check_tma_df_exists()
     #     # remove core entry from list
 
+
 class TMASegmenter(MultiScaleImageOperations):
     """Class for performing cell segmention tissue microarray images. Currently,
     only supports cellpose."""
