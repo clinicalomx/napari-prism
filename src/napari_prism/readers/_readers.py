@@ -15,7 +15,9 @@ from napari_spatialdata import Interactive
 from spatialdata import SpatialData
 from spatialdata.models import Image2DModel
 from spatialdata.transformations import Identity, Scale
+
 from napari_prism.constants import DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
+
 
 class QptiffLoader(ABC):
     META_ORDER = []

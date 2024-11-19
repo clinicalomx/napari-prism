@@ -689,7 +689,7 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         if shapes != [None]:
             return [shapes[-1]]
         return shapes
-    
+
     def create_parameter_widgets(self):
         super().create_parameter_widgets()
 

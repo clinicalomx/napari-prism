@@ -569,7 +569,10 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         keys for batch correction. These keys usually have a 1:N relation to
         the cells in the AnnData object (i.e. multiple cells per category).
         """
-        if self.adata is None or CELL_INDEX_LABEL not in self.adata.obs.columns:
+        if (
+            self.adata is None
+            or CELL_INDEX_LABEL not in self.adata.obs.columns
+        ):
             return []
 
         else:

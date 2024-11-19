@@ -209,9 +209,7 @@ class AnnDataAnalysisParentWidget(QWidget):
             # if isinstance(
             #     x.data, napari.layers._multiscale_data.MultiScaleData
             # )
-            if isinstance(
-                x.data, napari.layers.Labels
-            )
+            if isinstance(x.data, napari.layers.Labels)
             and "sdata" in x.metadata
             and x.metadata["sdata"] is not None
             and x.metadata["sdata"].is_backed()

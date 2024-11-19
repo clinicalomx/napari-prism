@@ -62,7 +62,8 @@ class SdataImageNapariWidget(BaseNapariWidget):
         # And refresh any new coordinate systems added to disk
         cs_widget = spatial_data_widget.coordinate_system_widget
         before_cs = {
-            cs for sdata in cs_widget._sdata for cs in sdata.coordinate_systems}
+            cs for sdata in cs_widget._sdata for cs in sdata.coordinate_systems
+        }
         items = set(cs_widget.item(i).text() for i in range(cs_widget.count()))
         new_cs = items - before_cs
         if new_cs:

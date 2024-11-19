@@ -34,18 +34,17 @@ from spatialdata.models import (
 )
 from spatialdata.models.models import Schema_t
 from spatialdata.transformations import (
+    Affine,
     BaseTransformation,
     Scale,
-    Affine,
     Sequence,
     Translation,
     get_transformation_between_coordinate_systems,
-    set_transformation
 )
 from xarray import DataArray
+
 from napari_prism.constants import (
-    DEFAULT_MULTISCALE_DOWNSCALE_FACTORS,
-    CELL_INDEX_LABEL
+    CELL_INDEX_LABEL,
 )
 
 # For cellpose api
@@ -1789,7 +1788,7 @@ class TMASegmenter(MultiScaleImageOperations):
         channel_merge_method: Literal["max", "mean", "sum", "median"] = "max",
     ):
         """Perform cell segmentation on a select subset region(s) of the given
-        image. """
+        image."""
         raise NotImplementedError("Not implemented yet")
 
     def segment_all(
@@ -1909,7 +1908,8 @@ class TMASegmenter(MultiScaleImageOperations):
                     bboxes_rast = [bboxes_rast[0], bboxes_rast[-1]]
                 if (
                     tiling_shapes_annotation_column
-                    and tiling_shapes_annotation_column in tiling_shapes.columns
+                    and tiling_shapes_annotation_column
+                    in tiling_shapes.columns
                 ):
                     bbox_labels = list(
                         tiling_shapes[tiling_shapes_annotation_column]
@@ -1924,10 +1924,13 @@ class TMASegmenter(MultiScaleImageOperations):
                     tile = input_image.isel(
                         x=slice(xmin, xmax + 1), y=slice(ymin, ymax + 1)
                     )
-                    image_tiles.append(tile.data)  # append the numpy/dask array
+                    image_tiles.append(
+                        tile.data
+                    )  # append the numpy/dask array
 
                 logger.info(
-                    f"Segmenting {len(image_tiles)} regions", flush=True)
+                    f"Segmenting {len(image_tiles)} regions", flush=True
+                )
                 results = self.cellpose_segmentation(
                     image=image_tiles,
                     model_type=model_type,
@@ -1963,7 +1966,7 @@ class TMASegmenter(MultiScaleImageOperations):
                     logger.info(seg_mask)
                     seg_mask[seg_mask != 0] += current_max
                     logger.info(seg_mask)
-                    
+
                     # Save as distinct cs's; NOTE: data duplication revisit this
                     affine_matrix = np.array(
                         [
@@ -1972,13 +1975,16 @@ class TMASegmenter(MultiScaleImageOperations):
                             [0, 0, 1],
                         ]
                     )
-                    bbox_map = Affine(affine_matrix, ("x", "y"), ("x", "y"))
+                    
                     subset_translation = Translation(
-                        [xmin, ymin], axes=("x", "y"))
-                    local_transformation_sequence = Sequence(
-                        transformations + [subset_translation]
+                        [xmin, ymin], axes=("x", "y")
                     )
-                    #NOTE: below future implementation
+                    # NOTE: below future implementation
+                    # bbox_map = Affine(affine_matrix, ("x", "y"), ("x", "y"))
+                    # local_transformation_sequence = Sequence(
+                    #     transformations + [subset_translation]
+                    # )
+                    
                     # self.add_label(
                     #     seg_mask,
                     #     self.image_name + f"_labels_{bbox_labels[i]}",
@@ -1991,22 +1997,27 @@ class TMASegmenter(MultiScaleImageOperations):
                     #     scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS,
                     # )
                     local_seg_table = pd.DataFrame(
-                        index=range(1, 1 + seg_mask.max()))
+                        index=range(1, 1 + seg_mask.max())
+                    )
                     local_seg_table = local_seg_table.reset_index(
-                        names=CELL_INDEX_LABEL)
+                        names=CELL_INDEX_LABEL
+                    )
                     local_seg_table["tma_label"] = (
                         self.image_name + "_labels" + "_" + bbox_labels[i]
                     )
                     str_index = (
-                        local_seg_table[CELL_INDEX_LABEL].astype(str) 
-                        + "_" + bbox_labels[i]
+                        local_seg_table[CELL_INDEX_LABEL].astype(str)
+                        + "_"
+                        + bbox_labels[i]
                     )
                     local_seg_table.index = str_index.values
                     local_seg_table["lyr"] = self.image_name + "_labels"
                     local_tables.append(local_seg_table)
 
                     # Append to global mask for a one-click all
-                    global_seg_mask[xmin : xmax + 1, ymin : ymax + 1] = seg_mask
+                    global_seg_mask[xmin : xmax + 1, ymin : ymax + 1] = (
+                        seg_mask
+                    )
 
                     new_max = global_seg_mask.max()  # seg_mask.max()
                     if debug and i == 1:
@@ -2017,14 +2028,14 @@ class TMASegmenter(MultiScaleImageOperations):
                     logger.info(f"New max {current_max}", flush=True)
                     if debug and i == -1:
                         break
-                
+
                 seg_table = pd.concat(local_tables)
 
             # Tiling shapes is none,
             else:
                 logger.info(
-                    f"Segmenting entirety of {len(self.image_Name)}", 
-                    flush=True
+                    f"Segmenting entirety of {len(self.image_Name)}",
+                    flush=True,
                 )
                 results = self.cellpose_segmentation(
                     image=input_image,
@@ -2043,14 +2054,11 @@ class TMASegmenter(MultiScaleImageOperations):
                 global_seg_mask = results["masks"][i].astype(np.int32)
                 transformation_sequence = Sequence(transformations)
                 seg_table = pd.DataFrame(
-                    index=range(1, 1 + global_seg_mask.max()))
-                seg_table = seg_table.reset_index(
-                    names=CELL_INDEX_LABEL)
-                seg_table["tma_label"] = "global"
-                str_index = (
-                    seg_table[CELL_INDEX_LABEL].astype(str)
-                    + "_global"
+                    index=range(1, 1 + global_seg_mask.max())
                 )
+                seg_table = seg_table.reset_index(names=CELL_INDEX_LABEL)
+                seg_table["tma_label"] = "global"
+                str_index = seg_table[CELL_INDEX_LABEL].astype(str) + "_global"
                 seg_table.index = str_index.values
                 seg_table["lyr"] = self.image_name + "_labels"
 
@@ -2066,11 +2074,12 @@ class TMASegmenter(MultiScaleImageOperations):
                 seg_table,
                 "labels_expression",
                 write_element=True,
-                #TODO: future -> seg_table["tma_label"].unique().tolist()
-                region=self.image_name + "_labels", # or none
+                # TODO: future -> seg_table["tma_label"].unique().tolist()
+                region=self.image_name + "_labels",  # or none
                 region_key="lyr",
                 instance_key=CELL_INDEX_LABEL,
             )
+
 
 class TMAMeasurer(MultiScaleImageOperations):
     """Class for measuring statistics of cells in TMA cores. Uses skimage.
