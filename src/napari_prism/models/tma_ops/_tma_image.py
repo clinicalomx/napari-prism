@@ -44,7 +44,6 @@ from xarray import DataArray
 
 from napari_prism.constants import (
     CELL_INDEX_LABEL,
-    DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 )
 
 # For cellpose api
@@ -2064,14 +2063,12 @@ class TMASegmenter(MultiScaleImageOperations):
                     local_seg_table = local_seg_table.reset_index(
                         names=LOCAL_CELL_INDEX_LABEL
                     )
-                    local_seg_table["tma_label"] = (
-                        bbox_labels[i]
-                    )
+                    local_seg_table["tma_label"] = bbox_labels[i]
                     str_index = (
                         local_seg_table[LOCAL_CELL_INDEX_LABEL].astype(str)
                         + "_"
                         + bbox_labels[i]
-                    ) # i.e.) '0_A-1', '1_A-1', '2_A-1', ...
+                    )  # i.e.) '0_A-1', '1_A-1', '2_A-1', ...
                     local_seg_table.index = str_index.values
                     local_seg_table["lyr"] = self.image_name + "_labels"
                     local_tables.append(local_seg_table)
@@ -2124,14 +2121,14 @@ class TMASegmenter(MultiScaleImageOperations):
                 str_index = seg_table[CELL_INDEX_LABEL].astype(str) + "_global"
                 seg_table.index = str_index.values
                 seg_table["lyr"] = self.image_name + "_labels"
-            
+
             self.add_label(
                 global_seg_mask,
                 self.image_name + "_labels",
                 write_element=True,
                 dims=("x", "y"),
                 transformations={"global": transformation_sequence},
-                #scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
+                # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
             )
 
             self.add_table(
@@ -2309,7 +2306,8 @@ class TMAMeasurer(MultiScaleImageOperations):
         previous_uns = parent_anndata.uns
 
         merged_obs = previous_obs.merge(
-            obs_like, how="inner", on=CELL_INDEX_LABEL)
+            obs_like, how="inner", on=CELL_INDEX_LABEL
+        )
         merged_obs = merged_obs.rename(
             columns={
                 "centroid-0": "centroid_x",
@@ -2325,9 +2323,7 @@ class TMAMeasurer(MultiScaleImageOperations):
         adata = ad.AnnData(
             intensities.values,
             obs=merged_obs,
-            obsm={
-                "spatial": merged_obs[["centroid_x", "centroid_y"]].values
-            },
+            obsm={"spatial": merged_obs[["centroid_x", "centroid_y"]].values},
             var=new_var,
             uns=previous_uns,
         )

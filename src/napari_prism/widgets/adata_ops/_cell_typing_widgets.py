@@ -10,7 +10,12 @@ from napari.qt.threading import thread_worker
 from napari.utils.events import EmitterGroup
 from qtpy.QtCore import QPoint, Qt, QTimer
 from qtpy.QtWidgets import (
-    QAction, QMenu, QTabWidget, QTreeWidget, QInputDialog, QMessageBox
+    QAction,
+    QInputDialog,
+    QMenu,
+    QMessageBox,
+    QTabWidget,
+    QTreeWidget,
 )
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
@@ -214,22 +219,24 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             msg.setText(message)
             msg.setWindowTitle(title)
             msg.exec_()
-        
+
         old_name = node.text(0)
         new_name, ok = QInputDialog.getText(
-            self.native, "Rename Node", "Enter new name:", text=old_name)
-    
+            self.native, "Rename Node", "Enter new name:", text=old_name
+        )
+
         if ok and new_name.strip():
             new_name = new_name.strip()
-            
+
             # Check if the new name already exists in the tree
             if _is_name_unique(new_name):
                 node.setText(0, new_name)
             else:
                 # Show a warning if the name is already taken
                 _show_warning(
-                    "Name already exists", 
-                    "The name you entered already exists in the tree.")
+                    "Name already exists",
+                    "The name you entered already exists in the tree.",
+                )
 
     def delete_node(self, node: AnnDataNodeQT) -> None:
         """Deletes the current AnnData node and its children from the tree
@@ -278,30 +285,35 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         if column != 0:
             return
 
-        old_name = node.data(0, Qt.UserRole) if node.data(0, Qt.UserRole) \
+        old_name = (
+            node.data(0, Qt.UserRole)
+            if node.data(0, Qt.UserRole)
             else node.text(0)
+        )
 
         new_name = node.text(0).strip()
 
         if not new_name:
             new_name = old_name
-        
+
         parent = node.parent()
         sibling_count = (
-            parent.childCount() if parent else 
-            self.adata_tree_widget.topLevelItemCount()
+            parent.childCount()
+            if parent
+            else self.adata_tree_widget.topLevelItemCount()
         )
 
         is_unique = True
         for i in range(sibling_count):
             sibling = (
-                parent.child(i) if parent else 
-                self.adata_tree_widget.topLevelItem(i)
+                parent.child(i)
+                if parent
+                else self.adata_tree_widget.topLevelItem(i)
             )
             if sibling != node and sibling.text(0) == new_name:
                 is_unique = False
                 break
-        
+
         if is_unique:
             node.setData(0, Qt.UserRole, new_name)
         else:
