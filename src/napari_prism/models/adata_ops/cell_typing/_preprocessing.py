@@ -14,7 +14,6 @@ from anndata import AnnData
 _current_backend = {"module": "scanpy"}
 sc_backend = importlib.import_module(_current_backend["module"])
 
-
 def set_backend(backend: Literal["cpu", "gpu"]) -> None:
     """Set the backend to use for processing."""
     global sc_backend
