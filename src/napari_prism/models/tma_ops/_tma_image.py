@@ -41,9 +41,10 @@ from spatialdata.transformations import (
     get_transformation_between_coordinate_systems,
 )
 from xarray import DataArray
-
+from multiscale_spatial_image import to_multiscale
 from napari_prism.constants import (
     CELL_INDEX_LABEL,
+    DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 )
 
 # For cellpose api
@@ -229,7 +230,9 @@ class SdataImageOperations:
 
         # Add the c dim back for logging of what the slice represents
         c_name = f'{method}[{"_".join(channels)}]'  # + "_" + method
-        compacted = compacted.assign_coords(c=c_name)
+        # Keep the c dim as a scalar
+        compacted = compacted.expand_dims(c=[1])
+        compacted = compacted.assign_coords(c=[c_name])
         return compacted
 
     def overwrite_element(
@@ -444,7 +447,7 @@ class SingleScaleImageOperations(SdataImageOperations):
 
 class MultiScaleImageOperations(SdataImageOperations):
     """Base class for operating on multiscale images in SpatialData objects (
-    multiscale image elements)."""
+    multiscale image elements, DataArrays and DataTrees)."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -457,42 +460,74 @@ class MultiScaleImageOperations(SdataImageOperations):
             raise ValueError("Image is not a multiscale image")
         return msi
 
-    def get_image_channels(self) -> ndarray:
+    def get_image_flat(self, image: DataTree | None = None) -> list[DataArray]:
+        """Return the image pyramid as a flat list of DataArrays.
+        
+        Args:
+            image: The image to retrieve the flat list of DataArrays from. If
+                None, uses the contained image in the instance.
+        """
+        if image is None:
+            image = self.get_image()
+        return [image[x].image for x in self.get_image_scales(image)]
+
+    def get_image_channels(self, image: DataTree | None = None) -> ndarray:
         """Get the channel names of the contained image.
+
+        Args:
+            image: The image to retrieve the channels from. If None, uses the
+                contained image in the instance.
 
         Returns:
             The channel names of the contained image.
         """
-        return self.get_image_by_scale().coords["c"].data
+        return self.get_image_by_scale(image=image).coords["c"].data
 
-    def get_image_scales(self) -> list[str]:
+    def get_image_scales(self, image: DataTree | None = None) -> list[str]:
         """Get the names of the image scales of the image pyramid. Removes the
         `/` prefix from the scale names.
+
+        Args:
+            image: The image to retrieve the scales from. If None, uses the
+                contained image in the instance.
 
         Returns:
             The names of the image scales
         """
-        msi = self.get_image()
-        return [x.lstrip("/") for x in msi.groups[1:]]
+        if image is None:
+            image = self.get_image()
+        return [x.lstrip("/") for x in image.groups[1:]]
 
-    def get_image_shapes(self) -> list[str]:
+    def get_image_shapes(self, image: DataTree | None = None) -> list[str]:
         """Get the shapes of the images at each scale in the image pyramid.
 
         Usually in the form of: (C, Y, X) or (C, X, Y)
 
+        Args:
+            image: The image to retrieve the shapes from. If None, uses the
+                contained image in the instance.
+
         Returns:
             The shapes of the images at each scale in the image pyramid.
         """
-        scales = self.get_image_scales()
-        dataarrays = [self.get_image()[x] for x in scales]
+        scales = self.get_image_scales(image)
+        if image is None:
+            image = self.get_image()
+        dataarrays = [image[x] for x in scales]
         shapes = [x.image.shape for x in dataarrays]
         return shapes
 
-    def get_image_by_scale(self, scale: str | None = None) -> DataArray:
+    def get_image_by_scale(
+        self,
+        image: DataTree | None = None,
+        scale: str | None = None
+    ) -> DataArray:
         """Get the image at a given scale in the image pyramid to
         retrieve a certain resolution.
 
         Args:
+            image: The image to retrieve the scale from. If None, uses the
+                contained image in the instance.
             scale: The scale of the image to retrieve. If None, retrieves
                 the last scale (or smallest resolution) in the image pyramid.
 
@@ -501,23 +536,30 @@ class MultiScaleImageOperations(SdataImageOperations):
 
         """
         if scale is None:
-            scale = self.get_image_scales()[-1]  # smallest resolution
+            scale = self.get_image_scales(image)[-1]  # smallest resolution
 
-        return self.get_image()[scale].image
+        if image is None:
+            image = self.get_image()
+
+        return image[scale].image
 
     def get_downsampling_factor(
-        self, working_image: DataArray | ndarray[Any, dtype[float64]]
+        self,
+        working_image: DataArray | ndarray[Any, dtype[float64]],
+        source_image: DataArray | ndarray[Any, dtype[float64]] | None = None,
     ) -> float:
         """Get the downsampling factor which converts `working_image` to the
         full scale image. Only works if Y and X have equal scaling.
 
         Args:
+            source_image: The source image to compute the full scale resolution
+                from.
             working_image: The image to get the downsampling factor for.
 
         Returns:
             The downsampling factor.
         """
-        fs = self.get_image_by_scale("scale0")  # C,Y,X
+        fs = self.get_image_by_scale(source_image, scale="scale0")  # C,Y,X
         fs_x_shape = fs.coords["x"].shape[0]
         fs_y_shape = fs.coords["y"].shape[0]
         if isinstance(working_image, DataArray):
@@ -531,7 +573,6 @@ class MultiScaleImageOperations(SdataImageOperations):
             ds_factor_x == ds_factor_y
         ), "Unequal downsampling factors for X and Y"
         return ds_factor_x
-
 
 class TMAMasker(MultiScaleImageOperations):
     """Class for performing image masking operations on tissue microarray
@@ -747,7 +788,7 @@ class TMAMasker(MultiScaleImageOperations):
         transformations = []
 
         # Retrieve image to process
-        multichannel_image = self.get_image_by_scale(scale)  # C, Y, X
+        multichannel_image = self.get_image_by_scale(scale=scale)  # C, Y, X
 
         selected_channel_image = multichannel_image.sel(c=channel)
 
@@ -1868,7 +1909,7 @@ class TMASegmenter(MultiScaleImageOperations):
         transformations = []
 
         # Chosen segmentation scale
-        multichannel_image = self.get_image_by_scale(scale)  # CYX
+        multichannel_image = self.get_image_by_scale(scale=scale)  # CYX
 
         # Chosen channel / channels; -> DataArray
         selected_channel_image = multichannel_image.sel(c=segmentation_channel)
@@ -1888,7 +1929,7 @@ class TMASegmenter(MultiScaleImageOperations):
                 method=channel_merge_method,
             )
 
-        input_image = selected_channel_image.transpose("x", "y")
+        input_image = selected_channel_image.transpose("x", "y", "c")
         input_channels_cellpose = [0, 0]  # Grayscale, no nuclear channel
         # If optional nuclear channel is provided;
         if optional_nuclear_channel:
@@ -1904,12 +1945,19 @@ class TMASegmenter(MultiScaleImageOperations):
             ]  # Assume nuclear channel is the last channel
 
         if preview:
+            # input_image_ms = to_multiscale(
+            #     input_image, DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
+            # )
+            # return self.get_image_flat(input_image_ms)
             return input_image
 
         else:
             # Prepare cellpose inputs
             channel_axis = 2 if optional_nuclear_channel else None
             transformation_sequence = Sequence(transformations)
+            if not optional_nuclear_channel:
+                # Recollapse c dim if no nuclear channel -> 
+                input_image = input_image.squeeze("c")
 
             # Extract tiles
             # Assume geometries exist in "global" and scale0
@@ -2141,7 +2189,7 @@ class TMAMeasurer(MultiScaleImageOperations):
             intensity_mode: The intensity mode to use. Options: "mean",
                 "median".
         """
-        intensity_image = self.get_image_by_scale("scale0")  # Fullscale
+        intensity_image = self.get_image_by_scale(scale="scale0")  # Fullscale
         # Validate that labels has the same x and y dims as intensity_image
         if (
             labels.shape != intensity_image.shape[1:]

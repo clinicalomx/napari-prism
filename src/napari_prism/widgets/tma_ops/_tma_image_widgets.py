@@ -9,9 +9,10 @@ import shapely
 from magicgui.widgets import ComboBox, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from numpy import dtype, ndarray
-from qtpy.QtWidgets import QAbstractItemView
+from qtpy.QtWidgets import QAbstractItemView, QHBoxLayout
 from spatialdata.transformations import Scale, Translation, get_transformation
 from xarray import DataArray
+import xarray as xr
 
 from napari_prism.models.tma_ops._tma_image import (
     MultiScaleImageOperations,
@@ -416,7 +417,8 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             gamma=gamma,
         )
 
-        # refresh the Sdata elements after this is called. NOTE: will be depracated in 0.5.0 napari
+        # refresh the Sdata elements after this is called. 
+        # NOTE: will be depracated in 0.5.0 napari
         self.refresh_sdata_widget()
 
 
@@ -793,13 +795,14 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             options={"nullable": True},
         )
 
-        # self._preview_segmentation_button = create_widget(
-        #     value=False,
-        #     name="Preview Segmentation",
-        #     annotation=bool,
-        #     widget_type="PushButton"
-        # )
-        # self._preview_segmentation_button.changed.connect(self.preview_segmentation)
+        self._preview_segmentation_button = create_widget(
+            value=False,
+            name="Preview Segmentation",
+            annotation=bool,
+            widget_type="PushButton"
+        )
+        self._preview_segmentation_button.changed.connect(
+            self.preview_segmentation)
 
         self._run_segmentation_button = create_widget(
             value=False,
@@ -808,9 +811,10 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             widget_type="PushButton",
         )
         self._run_segmentation_button.changed.connect(self.run_segmentation)
-        # self._buttons = QHBoxLayout()
-        # self._buttons.addWidget(self._preview_segmentation_button.native)
-        # self._buttons.addWidget(self._run_segmentation_button.native)
+        self._buttons = QHBoxLayout()
+        self._buttons.addWidget(self._preview_segmentation_button.native)
+        self._buttons.addWidget(self._run_segmentation_button.native)
+
 
         self.extend(
             [
@@ -826,12 +830,11 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
                 self._cellprob_threshold_slider,
                 self._flow_threshold_slider,
                 self._debug_mode_button,
-                self._run_segmentation_button,
-                # self._buttons,
+                #self._run_segmentation_button,
             ]
         )
 
-        # self.native.layout().addLayout(self._buttons)
+        self.native.layout().addLayout(self._buttons)
 
     def get_tiling_shape_layers(self, widget=None):
         return [
@@ -863,31 +866,104 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         else:
             return []
 
-    def disable_function_button(self):
-        self._run_segmentation_button.enabled = False
-        # self._preview_segmentation_button.enabled = False
+    def disable_function_button(self, button):
+        button.enabled = False
 
-    def enable_function_button(self):
-        self._run_segmentation_button.enabled = True
-        # self._preview_segmentation_button.enabled = True
+    def enable_function_button(self, button):
+        button.enabled = True
 
-    # def preview_segmentation(self):
-    #     self.run_segmentation(preview=True)
+    @thread_worker
+    def _preview_segmentation(self):
+        #self.run_segmentation(preview=True) -. NOTE: too slow, mimick with add
+        channels = self._segmentation_channel_selection.value
+        method = self._channel_merge_method_selection.value
+        image = self.model.get_image()
+        
 
-    def run_segmentation(self, preview=False):
-        worker = self._run_segmentation(preview)
-        # TODO: add progress bar; logging message etcd
+        if self._optional_nuclear_channel_selection.value is not None:
+            nc = self._optional_nuclear_channel_selection.value
+            image_list = [image.sel(c=channels + [nc])[x].image for x in image]
+            image_list = [
+                xr.concat([
+                    (
+                        self.model
+                            .get_multichannel_image_projection(
+                                im, channels, method=method)
+                            .transpose("x", "y", "c")
+                            .compute()
+                    ), im.sel(c="DAPI")], dim="c")
+                    for im in image_list
+                ]
+
+        else:
+            image_list = [image.sel(c=channels)[x].image for x in image]
+            image_list = [
+                self.model.get_multichannel_image_projection(
+                    im, channels, method=method).compute() for im in image_list]
+
+        def dataarray_to_rgb(dataarray):
+            if "c" not in dataarray.dims:
+                raise ValueError("Input DataArray must have a 'c' dimension.")
+
+            c_size = dataarray.sizes["c"]
+
+            if c_size == 1:
+                # Create an RGB image where the first channel is green
+                green_channel = dataarray.isel(c=0)
+                rgb_image = xr.concat(
+                    [
+                        xr.zeros_like(green_channel), 
+                        green_channel, 
+                        xr.zeros_like(green_channel)
+                    ],
+                    dim="c"
+                )
+                rgb_image = rgb_image.assign_coords(c=["R", "G", "B"])
+            elif c_size == 2:
+                # rgb, first channel green, second blue
+                green_channel = dataarray.isel(c=0)
+                blue_channel = dataarray.isel(c=1)
+                rgb_image = xr.concat(
+                    [xr.zeros_like(green_channel), green_channel, blue_channel],
+                    dim="c"
+                )
+                rgb_image = rgb_image.assign_coords(c=["R", "G", "B"])
+            else:
+                raise ValueError(
+                    "DataArray must have 1 or 2 channels in the 'c' dimension.")
+
+            rgb_image = rgb_image.transpose("y", "x", "c")
+            return rgb_image
+
+        image_list = [dataarray_to_rgb(im) for im in image_list]
+
+        return image_list
+
+    def preview_segmentation(self):
+        def _handle_preview_segmentation(image_list):
+            self.viewer.add_image(
+                image_list,
+                name=f"Segmentation Input Preview",
+                multiscale=True,
+                blending="additive",
+                rgb=True
+            )
+        worker = self._preview_segmentation()
+        self.disable_function_button(self._preview_segmentation_button)
+        worker.start()
+        worker.returned.connect(_handle_preview_segmentation)
+        worker.finished.connect(lambda: self.enable_function_button(
+            button=self._preview_segmentation_button))
+        
+
+    def run_segmentation(self):
+        worker = self._run_segmentation()
+        self.disable_function_button(self._run_segmentation_button)
         worker.start()
         worker.finished.connect(self.post_run_segmentation)
-        worker.finished.connect(self.enable_function_button)
+        worker.finished.connect(lambda: self.enable_function_button(
+            button=self._run_segmentation_button))
         worker.finished.connect(self.refresh_sdata_widget)
-
-        # add_image = partial(
-        #     self.viewer.add_image,
-        #     name="Segmentation Preview",
-        #     rgb=True)
-
-        # worker.returned.connect(add_image)
 
     def post_run_segmentation(self):
         seg_name = self.model.image_name + "_labels"
@@ -902,9 +978,9 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             )  # mimick re-adding the layer
 
     @thread_worker
-    def _run_segmentation(self, preview):
-        self.disable_function_button()
+    def _run_segmentation(self):
         # Validate parameters from widget
+        data_sd = None
         if self._tiling_shape_layer_selection.value is not None:
             # Get the scaling factor of the chosen image scale;
             tiling_layer = get_selected_layer(
@@ -926,26 +1002,27 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
                 translate = translate[0].translation
                 data_sd["geometry"] = data_sd["geometry"].translate(*translate)
 
-            scale = self.get_multiscale_image_scales()[self.scale_index]
-            out = self.model.segment_all(  # noqa: F841
-                scale=scale,
-                segmentation_channel=self._segmentation_channel_selection.value,
-                tiling_shapes=data_sd,
-                model_type=self._base_model_selection.value.name,
-                nuclei_diam_um=float(self._nuclei_diameter_um_entry.value),
-                channel_merge_method=self._channel_merge_method_selection.value,
-                optional_nuclear_channel=self._optional_nuclear_channel_selection.value,
-                tiling_shapes_annotation_column=self._tile_name_column_selection.value,
-                cellprob_threshold=float(
-                    self._cellprob_threshold_slider.value
-                ),
-                flow_threshold=float(self._flow_threshold_slider.value),
-                custom_model=self._custom_model_file_edit.value,
-                denoise_model=self._denoise_model_selection.value.name,
-                debug=self._debug_mode_button.value,
-                preview=preview,
-            )
-
+        scale = self.get_multiscale_image_scales()[self.scale_index]
+        out = self.model.segment_all(  # noqa: F841
+            scale=scale,
+            segmentation_channel=self._segmentation_channel_selection.value,
+            tiling_shapes=data_sd,
+            model_type=self._base_model_selection.value.name,
+            nuclei_diam_um=float(self._nuclei_diameter_um_entry.value),
+            channel_merge_method=self._channel_merge_method_selection.value,
+            optional_nuclear_channel=self._optional_nuclear_channel_selection.value,
+            tiling_shapes_annotation_column=self._tile_name_column_selection.value,
+            cellprob_threshold=float(
+                self._cellprob_threshold_slider.value
+            ),
+            flow_threshold=float(self._flow_threshold_slider.value),
+            custom_model=self._custom_model_file_edit.value,
+            denoise_model=self._denoise_model_selection.value.name,
+            debug=self._debug_mode_button.value,
+            preview=False,
+        )
+        if out is not None:
+            return out
 
 class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
     def __init__(
