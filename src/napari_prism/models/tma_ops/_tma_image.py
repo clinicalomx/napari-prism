@@ -44,6 +44,7 @@ from xarray import DataArray
 
 from napari_prism.constants import (
     CELL_INDEX_LABEL,
+    DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 )
 
 # For cellpose api
@@ -2024,9 +2025,8 @@ class TMASegmenter(MultiScaleImageOperations):
                     )
                     xmin, ymin, xmax, ymax = bbox
                     seg_mask = results["masks"][i].astype(np.int32)
-                    logger.info(seg_mask)
+                    local_max = seg_mask.max()
                     seg_mask[seg_mask != 0] += current_max
-                    logger.info(seg_mask)
 
                     # NOTE: below future implementation
                     # Save as distinct cs's; NOTE: data duplication revisit this
@@ -2057,20 +2057,21 @@ class TMASegmenter(MultiScaleImageOperations):
                     #         },
                     #     scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS,
                     # )
+                    LOCAL_CELL_INDEX_LABEL = CELL_INDEX_LABEL + "_local"
                     local_seg_table = pd.DataFrame(
-                        index=range(1, 1 + seg_mask.max())
+                        index=range(1, 1 + local_max)
                     )
                     local_seg_table = local_seg_table.reset_index(
-                        names=CELL_INDEX_LABEL
+                        names=LOCAL_CELL_INDEX_LABEL
                     )
                     local_seg_table["tma_label"] = (
-                        self.image_name + "_labels" + "_" + bbox_labels[i]
+                        bbox_labels[i]
                     )
                     str_index = (
-                        local_seg_table[CELL_INDEX_LABEL].astype(str)
+                        local_seg_table[LOCAL_CELL_INDEX_LABEL].astype(str)
                         + "_"
                         + bbox_labels[i]
-                    )
+                    ) # i.e.) '0_A-1', '1_A-1', '2_A-1', ...
                     local_seg_table.index = str_index.values
                     local_seg_table["lyr"] = self.image_name + "_labels"
                     local_tables.append(local_seg_table)
@@ -2091,6 +2092,7 @@ class TMASegmenter(MultiScaleImageOperations):
                         break
 
                 seg_table = pd.concat(local_tables)
+                seg_table[CELL_INDEX_LABEL] = range(1, 1 + seg_table.shape[0])
 
             # Tiling shapes is none,
             else:
@@ -2122,13 +2124,14 @@ class TMASegmenter(MultiScaleImageOperations):
                 str_index = seg_table[CELL_INDEX_LABEL].astype(str) + "_global"
                 seg_table.index = str_index.values
                 seg_table["lyr"] = self.image_name + "_labels"
-
+            
             self.add_label(
                 global_seg_mask,
                 self.image_name + "_labels",
                 write_element=True,
                 dims=("x", "y"),
                 transformations={"global": transformation_sequence},
+                #scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
             )
 
             self.add_table(
@@ -2232,7 +2235,6 @@ class TMAMeasurer(MultiScaleImageOperations):
             # Extract the intensities as expression data
             intensities = label_props_table.filter(like="intensity", axis=1)
             obs_like = label_props_table.drop(columns=intensities.columns)
-            obs_like = obs_like.rename(columns={"label": "index"})
 
             return intensities, obs_like
 
@@ -2283,7 +2285,12 @@ class TMAMeasurer(MultiScaleImageOperations):
 
             # Merge tables
             intensities = pd.concat(intensity_tables)
+            intensities = intensities.reset_index(drop=True)
+            intensities.index = intensities.index + 1  # 1-indexed
+
             obs_like = pd.concat(obs_tables)
+            obs_like = obs_like.rename(columns={"label": CELL_INDEX_LABEL})
+            obs_like.index = obs_like[CELL_INDEX_LABEL].values
 
         # Consolidate results
         # Extract channel information from the intensity image, assumed to be
@@ -2294,45 +2301,36 @@ class TMAMeasurer(MultiScaleImageOperations):
             lambda x: channel_map[int(x.split("-")[-1])]
         )  # convert intensity_*-0 to DAPI, etc.
 
-        # If AnnData is existing..?
-        if parent_anndata.shape[1] != 0:
-            raise ValueError("Parent AnnData must be featureless.")
+        # Check if every cell / obj is measured
+        assert intensities.shape[0] == parent_anndata.shape[0]
+        assert obs_like.shape[0] == parent_anndata.shape[0]
+        # Inherit
+        previous_obs = parent_anndata.obs
+        previous_uns = parent_anndata.uns
 
-        # If AnnData is featureless
-        else:
-            # Check if every cell / obj is measured
-            if intensities.shape[0] == parent_anndata.shape[0]:
-                intensities.to_csv("intensities.csv")
-                parent_anndata.to_csv("parent.csv")
-            if obs_like.shape[0] == parent_anndata.shape[0]:
-                obs_like.to_csv("obs_like.csv")
-                parent_anndata.to_csv("parent.csv")
-            # Inherit
-            previous_obs = parent_anndata.obs
-            previous_uns = parent_anndata.uns
+        merged_obs = previous_obs.merge(
+            obs_like, how="inner", on=CELL_INDEX_LABEL)
+        merged_obs = merged_obs.rename(
+            columns={
+                "centroid-0": "centroid_x",
+                "centroid-1": "centroid_y",
+            }
+        )
 
-            merged_obs = previous_obs.merge(obs_like, how="inner", on="index")
-            merged_obs = merged_obs.rename(
-                columns={
-                    "centroid-0": "centroid_x",
-                    "centroid-1": "centroid_y",
-                }
-            )
+        new_var = pd.DataFrame(
+            index=pd.Series(intensities.columns, name="Protein")
+        )
+        new_var["intensity_mode"] = intensity_mode
 
-            new_var = pd.DataFrame(
-                index=pd.Series(intensities.columns, name="Protein")
-            )
-            new_var["intensity_mode"] = intensity_mode
-
-            adata = ad.AnnData(
-                intensities.values,
-                obs=merged_obs,
-                obsm={
-                    "spatial": merged_obs[["centroid_x", "centroid_y"]].values
-                },
-                var=new_var,
-                uns=previous_uns,
-            )
+        adata = ad.AnnData(
+            intensities.values,
+            obs=merged_obs,
+            obsm={
+                "spatial": merged_obs[["centroid_x", "centroid_y"]].values
+            },
+            var=new_var,
+            uns=previous_uns,
+        )
 
         adata_parsed = TableModel.parse(adata)
 

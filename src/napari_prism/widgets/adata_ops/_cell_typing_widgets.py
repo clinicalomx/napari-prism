@@ -9,7 +9,9 @@ from magicgui.widgets import ComboBox, Container, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from napari.utils.events import EmitterGroup
 from qtpy.QtCore import QPoint, Qt, QTimer
-from qtpy.QtWidgets import QAction, QMenu, QTabWidget, QTreeWidget
+from qtpy.QtWidgets import (
+    QAction, QMenu, QTabWidget, QTreeWidget, QInputDialog, QMessageBox
+)
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
@@ -150,6 +152,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
         Context menu options:
             - Save: Save the current node to the viewer.
+            - Rename: Rename the node name.
             - Annotate Obs: Launch the table annotation widget. TODO
             - Delete: Delete the current node. Option only available if the
                 node is not the root node.
@@ -165,6 +168,11 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             save_action = QAction("Save", self.native)
             save_action.triggered.connect(lambda: self.save_current_node())
             context_menu.addAction(save_action)
+
+            # rename action
+            rename_action = QAction("Rename", self.native)
+            rename_action.triggered.connect(lambda: self.rename_node(item))
+            context_menu.addAction(rename_action)
 
             # annotate action; TODO
             annotate_action = QAction("Annotate Obs", self.native)
@@ -187,6 +195,41 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         current_node.inherit_children_obs()
         adata_out = current_node.adata
         self.events.adata_saved(value=adata_out)
+
+    def rename_node(self, node: AnnDataNodeQT) -> None:
+        """Renames the text of the node. If the new name already exists within
+        the tree, the operation is cancelled."""
+
+        def _is_name_unique(new_name):
+            for index in range(self.adata_tree_widget.topLevelItemCount()):
+                item = self.adata_tree_widget.topLevelItem(index)
+                if item.text(0) == new_name:
+                    return False
+            return True
+
+        def _show_warning(title: str, message: str) -> None:
+            """Show a warning dialog if the name already exists."""
+            msg = QMessageBox(self.native)
+            msg.setIcon(QMessageBox.Warning)
+            msg.setText(message)
+            msg.setWindowTitle(title)
+            msg.exec_()
+        
+        old_name = node.text(0)
+        new_name, ok = QInputDialog.getText(
+            self.native, "Rename Node", "Enter new name:", text=old_name)
+    
+        if ok and new_name.strip():
+            new_name = new_name.strip()
+            
+            # Check if the new name already exists in the tree
+            if _is_name_unique(new_name):
+                node.setText(0, new_name)
+            else:
+                # Show a warning if the name is already taken
+                _show_warning(
+                    "Name already exists", 
+                    "The name you entered already exists in the tree.")
 
     def delete_node(self, node: AnnDataNodeQT) -> None:
         """Deletes the current AnnData node and its children from the tree
@@ -217,6 +260,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         an anndata object is available.
         """
         self.adata_tree_widget = QTreeWidget()
+        self.adata_tree_widget.itemChanged.connect(self.validate_node_name)
         self.adata_tree_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.adata_tree_widget.customContextMenuRequested.connect(
             self.show_context_menu
@@ -229,6 +273,39 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
         if self.adata is not None:
             self.add_anndata_node(self.adata)
+
+    def validate_node_name(self, node: AnnDataNodeQT, column: int) -> None:
+        if column != 0:
+            return
+
+        old_name = node.data(0, Qt.UserRole) if node.data(0, Qt.UserRole) \
+            else node.text(0)
+
+        new_name = node.text(0).strip()
+
+        if not new_name:
+            new_name = old_name
+        
+        parent = node.parent()
+        sibling_count = (
+            parent.childCount() if parent else 
+            self.adata_tree_widget.topLevelItemCount()
+        )
+
+        is_unique = True
+        for i in range(sibling_count):
+            sibling = (
+                parent.child(i) if parent else 
+                self.adata_tree_widget.topLevelItem(i)
+            )
+            if sibling != node and sibling.text(0) == new_name:
+                is_unique = False
+                break
+        
+        if is_unique:
+            node.setData(0, Qt.UserRole, new_name)
+        else:
+            node.setText(0, old_name)
 
     def add_node_to_current(self, adata_slice, node_label, obs_labels=None):
         """Add a new node to the currently selected node in the tree widget. If

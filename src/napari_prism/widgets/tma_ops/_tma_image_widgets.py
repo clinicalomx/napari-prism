@@ -143,9 +143,63 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
 
     def overwrite_save_selected_layer(self):
         layer = self.viewer.layers.selection.active
-        print("modifiying layer", layer.name)
 
         # Shapes Directive;
+        def _update_metadata(layer):
+            """From https://github.com/scverse/napari-spatialdata/blob/
+            a38e2866c9195866fecf1eca0f911d52587b163a/src/napari_spatialdata/
+            _viewer.py
+            
+            Modified so that layer.metadata["_columns_df"] is assigned the
+            TMA labels, instead of None.
+            """
+            element = self.model.sdata[self.model.image_name]
+            stored_geoms = element["geometry"]
+            current_geoms = layer.data
+            
+            def bbox_to_array(row):
+                return np.array([
+                    [row["miny"], row["maxx"]],  # Top-right
+                    [row["maxy"], row["maxx"]],  # Bottom-right
+                    [row["maxy"], row["minx"]],  # Bottom-left
+                    [row["miny"], row["minx"]],  # Top-left
+                    [row["miny"], row["maxx"]]   # Closing point (Top-right)
+                ])
+            
+            stored_geoms = [
+                bbox_to_array(row) for _, row in stored_geoms.bounds.iterrows()
+            ]
+
+            def find_missing_array_indices(original_list, modified_list):
+                missing_indices = []
+                for i, orig_array in enumerate(original_list):
+                    if not any(
+                        np.array_equal(orig_array, mod_array) for mod_array 
+                            in modified_list):
+                        missing_indices.append(i)
+                return missing_indices
+
+            missing_indices = find_missing_array_indices(
+                stored_geoms, current_geoms
+            )
+
+            if missing_indices != []:
+                updated_gdf = element.drop(index=missing_indices)
+                updated_gdf = updated_gdf.reset_index(drop=True)
+                updated_n_indices = updated_gdf.shape[0]
+                updated_indices = list(range(updated_n_indices))
+                columns_df_label = layer.metadata["_columns_df"].columns[0]
+                updated_columns_df = pd.DataFrame(
+                    updated_gdf[columns_df_label])
+                
+            updated_n_indices = len(layer.data)
+            updated_indices = list(i for i in range(len(layer.data)))
+            
+            # update layer metadata
+            layer.metadata["_n_indices"] = updated_n_indices
+            layer.metadata["_indices"] = updated_indices
+            layer.metadata["_columns_df"] = updated_columns_df
+
         def _save_annotated_shapes_layer(layer):
             updated_data = layer.data
             annotations_inherited = layer.metadata["_columns_df"][
@@ -168,7 +222,7 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
                 write_element=True,
                 transformations={"global": transforms},
             )
-
+            
         if (
             isinstance(layer, napari.layers.shapes.shapes.Shapes)
             and "_columns_df" in layer.metadata
@@ -176,8 +230,11 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
             and "name" in layer.metadata
             and isinstance(layer.data, list)
         ):
+            updated_n_indices = len(layer.data)
+            # If a shape deletion occurred,
+            if layer.metadata["_n_indices"] > updated_n_indices:
+                _update_metadata(layer)
             _save_annotated_shapes_layer(layer)
-
 
 class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
     def __init__(

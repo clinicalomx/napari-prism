@@ -3,6 +3,7 @@ import re
 
 import pandas as pd
 from anndata import AnnData
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QLabel,
     QTreeWidgetItem,
@@ -19,7 +20,10 @@ class AnnDataNodeQT(QTreeWidgetItem):
         parent : QTreeWidgetItem | QTreeWidget | None
         """
         super(QTreeWidgetItem, self).__init__(parent)
+        if name != "Root":
+            self.setFlags(self.flags() | Qt.ItemIsEditable)
         self.setText(0, name)
+        self.setData(0, Qt.UserRole, self.text(0))
 
         self.adata = adata
         self.labels = labels
