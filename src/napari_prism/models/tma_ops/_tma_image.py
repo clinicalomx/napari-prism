@@ -41,10 +41,9 @@ from spatialdata.transformations import (
     get_transformation_between_coordinate_systems,
 )
 from xarray import DataArray
-from multiscale_spatial_image import to_multiscale
+
 from napari_prism.constants import (
     CELL_INDEX_LABEL,
-    DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 )
 
 # For cellpose api
@@ -462,7 +461,7 @@ class MultiScaleImageOperations(SdataImageOperations):
 
     def get_image_flat(self, image: DataTree | None = None) -> list[DataArray]:
         """Return the image pyramid as a flat list of DataArrays.
-        
+
         Args:
             image: The image to retrieve the flat list of DataArrays from. If
                 None, uses the contained image in the instance.
@@ -518,9 +517,7 @@ class MultiScaleImageOperations(SdataImageOperations):
         return shapes
 
     def get_image_by_scale(
-        self,
-        image: DataTree | None = None,
-        scale: str | None = None
+        self, image: DataTree | None = None, scale: str | None = None
     ) -> DataArray:
         """Get the image at a given scale in the image pyramid to
         retrieve a certain resolution.
@@ -573,6 +570,7 @@ class MultiScaleImageOperations(SdataImageOperations):
             ds_factor_x == ds_factor_y
         ), "Unequal downsampling factors for X and Y"
         return ds_factor_x
+
 
 class TMAMasker(MultiScaleImageOperations):
     """Class for performing image masking operations on tissue microarray
@@ -1956,7 +1954,7 @@ class TMASegmenter(MultiScaleImageOperations):
             channel_axis = 2 if optional_nuclear_channel else None
             transformation_sequence = Sequence(transformations)
             if not optional_nuclear_channel:
-                # Recollapse c dim if no nuclear channel -> 
+                # Recollapse c dim if no nuclear channel ->
                 input_image = input_image.squeeze("c")
 
             # Extract tiles
