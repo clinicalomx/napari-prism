@@ -199,13 +199,10 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
                     updated_gdf[columns_df_label]
                 )
 
-            updated_n_indices = len(layer.data)
-            updated_indices = list(i for i in range(len(layer.data)))
-
-            # update layer metadata
-            layer.metadata["_n_indices"] = updated_n_indices
-            layer.metadata["_indices"] = updated_indices
-            layer.metadata["_columns_df"] = updated_columns_df
+                # update layer metadata
+                layer.metadata["_n_indices"] = updated_n_indices
+                layer.metadata["_indices"] = updated_indices
+                layer.metadata["_columns_df"] = updated_columns_df
 
         def _save_annotated_shapes_layer(layer):
             updated_data = layer.data
