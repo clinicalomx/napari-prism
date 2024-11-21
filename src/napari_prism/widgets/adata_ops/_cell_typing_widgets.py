@@ -936,7 +936,7 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             )
             self.gpu_toggle_button.changed.connect(self._gpu_toggle)
             self.gpu_toggle_button.changed.connect(
-                self.embeddings_tab_cls.gpu_toggle # tl is toggled there
+                self.embeddings_tab_cls.gpu_toggle  # tl is toggled there
             )
             self.extend([self.gpu_toggle_button])
 
@@ -1007,7 +1007,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
             )
             self.gpu_toggle_button.changed.connect(self._gpu_toggle)
             self.extend([self.gpu_toggle_button])
-            
+
         # user selects layers
         self.embedding_selector = ComboBox(
             name="EmbeddingLayers",
@@ -1154,7 +1154,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
 class ClusterAssessmentWidget(AnnDataOperatorWidget):
     """Widget for assessing the quality of clustering runs of AnnData objects
     from ClusterSearchWidget.
-    
+
     Currently CPU only due to changes in cuml score funcs (only MI and ARI).
     """
 
@@ -1193,7 +1193,7 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
                 ClusterSearchWidget.
         """
         if self._cluster_run_selector.value is not None:
-            #gpu = True if self.backend == "GPU" else False
+            # gpu = True if self.backend == "GPU" else False
             self.model = ClusteringSearchEvaluator(
                 self.adata, run_selector_val, gpu=False
             )

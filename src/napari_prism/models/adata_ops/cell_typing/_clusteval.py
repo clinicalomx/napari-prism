@@ -158,7 +158,7 @@ class ClusteringSearchEvaluator:
     def _mutual_info_score(self, k=None):
         """Wrapper function"""
         return self.between_model_score(self.ml.mutual_info_score, k)
-    
+
     def normalized_mutual_info(self, k=None):
         """Wrapper function"""
         return self.between_model_score(
@@ -168,7 +168,7 @@ class ClusteringSearchEvaluator:
     def adjusted_mutual_info(self, k=None):
         """Wrapper function"""
         return self.between_model_score(self.ml.adjusted_mutual_info_score, k)
-    
+
     def _mutual_info_score(self, k=None):
         """Wrapper function"""
         return self.between_model_score(self.ml.mutual_info_score, k)

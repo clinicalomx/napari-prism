@@ -262,15 +262,13 @@ class AnnDataAnalysisParentWidget(QWidget):
         """Determines if the selected layer is a valid parent layer from which
         to retrieve SpatialData AND AnnData objects from.
         """
-        #TODO: optimise below, maybe use walrus, but less readable
+        # TODO: optimise below, maybe use walrus, but less readable
         return (
             selected is not None
             # and isinstance(
             #     selected.data, napari.layers._multiscale_data.MultiScaleData
             # )
-            and isinstance(
-                selected, napari.layers.Labels
-            )
+            and isinstance(selected, napari.layers.Labels)
             and "sdata" in selected.metadata
             and selected.metadata["sdata"] is not None
             and selected.metadata["sdata"].is_backed()
