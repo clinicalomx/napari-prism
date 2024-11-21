@@ -383,7 +383,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             # Parse dtypes
             for col in csv_df.columns:
                 try:
-                    csv_df[col] = pd.to_numeric(csv_df[col], error="raise")
+                    csv_df[col] = pd.to_numeric(csv_df[col], errors="raise")
                 except ValueError:
                     csv_df[col] = csv_df[col].astype("category")
 
