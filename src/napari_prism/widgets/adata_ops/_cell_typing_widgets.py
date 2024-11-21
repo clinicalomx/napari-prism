@@ -458,7 +458,7 @@ class QCWidget(AnnDataOperatorWidget):
         #: Events for when an anndata object is augmented (created)
         self.events = EmitterGroup(source=self, augment_created=None)
         super().__init__(viewer, adata)
-        
+
         #: Range slider for the upper and lower bound of histogram plots
         self.range_slider = None
 
@@ -483,8 +483,9 @@ class QCWidget(AnnDataOperatorWidget):
 
     def update_layer(self, layer: str) -> None:
         self.current_layer = layer
-        if self.qc_selection.value is not None and \
-            (self.obs_selection is not None or self.var_selection is not None):
+        if self.qc_selection.value is not None and (
+            self.obs_selection is not None or self.var_selection is not None
+        ):
             self.update_plot()
 
     def create_parameter_widgets(self) -> None:
@@ -689,7 +690,8 @@ class QCWidget(AnnDataOperatorWidget):
             obs_key = self.obs_selection.value
             min_val, max_val = self.range_slider.value()
             aug_adata = qc_func(
-                self.adata, obs_key, min_val, max_val, copy=True)
+                self.adata, obs_key, min_val, max_val, copy=True
+            )
             if self.obs_selection.value is not None:
                 node_label = node_label.replace(
                     "obs", self.obs_selection.value
@@ -699,8 +701,12 @@ class QCWidget(AnnDataOperatorWidget):
             var_key = self.var_selection.value
             min_val, max_val = self.range_slider.value()
             aug_adata = qc_func(
-                self.adata, var_key, min_val, max_val, self.current_layer,
-                copy=True
+                self.adata,
+                var_key,
+                min_val,
+                max_val,
+                self.current_layer,
+                copy=True,
             )
             if self.var_selection.value is not None:
                 node_label = node_label.replace(
@@ -823,8 +829,8 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         #: Events for when an anndata object is augmented (created)
         self.events = EmitterGroup(
             source=self,
-            augment_created=None, # Passes on QCWidget output
-            adata_changed=None, # Passes on ScanpyFunctionWidget output
+            augment_created=None,  # Passes on QCWidget output
+            adata_changed=None,  # Passes on ScanpyFunctionWidget output
         )
         super().__init__(viewer, adata)
 
@@ -909,7 +915,8 @@ class PreprocessingWidget(AnnDataOperatorWidget):
 
         # outgoing
         self.embeddings_tab_cls.events.adata_changed.connect(
-            self.events.adata_changed)
+            self.events.adata_changed
+        )
 
         self.processing_tabs.addTab(
             self.embeddings_tab_cls.native, "Embeddings"
@@ -950,11 +957,13 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         transform_label = ""
         for transform in self.transforms_list.value:
             self.adata = transform_map[transform.name](
-                self.adata, copy=True, layer=None)
+                self.adata, copy=True, layer=None
+            )
             transform_label += f"{transform.name}_"
         transform_label += self._expression_selector.value
         self.adata.layers[transform_label] = self.adata.X
         self.events.adata_changed(adata=self.adata)
+
 
 class ClusterSearchWidget(AnnDataOperatorWidget):
     """Widget for performing multiple clustering runs of AnnData objects over
@@ -1289,6 +1298,7 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
                     available_runs.append(searcher)
 
             return available_runs
+
 
 class ClusterAnnotatorWidget(AnnDataOperatorWidget):
     """Widget for annotating cluster or categorical .obs columns in the AnnData

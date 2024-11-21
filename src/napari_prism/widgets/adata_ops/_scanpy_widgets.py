@@ -614,7 +614,5 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         }
         scanpy_function = self.embedding_functions_selection.value
         kwargs = self.collect_parameters()
-        adata = function_map[scanpy_function](
-            self.adata, copy=True, **kwargs
-        )
+        adata = function_map[scanpy_function](self.adata, copy=True, **kwargs)
         self.events.adata_changed(adata=adata)

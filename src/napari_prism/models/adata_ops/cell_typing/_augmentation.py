@@ -13,9 +13,7 @@ from anndata import AnnData
 
 
 def add_obs_as_var(
-    adata: AnnData, 
-    obs_columns: list[str], 
-    layer: str | None = None
+    adata: AnnData, obs_columns: list[str], layer: str | None = None
 ) -> AnnData:
     """Adds .obs features as .var features to an AnnData.
 

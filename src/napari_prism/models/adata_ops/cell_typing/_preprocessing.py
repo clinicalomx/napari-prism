@@ -364,6 +364,7 @@ def filter_by_var_quantile(
     if copy:
         return adata
 
+
 def fill_na(
     adata: AnnData,
     fill_value: float = 0.0,

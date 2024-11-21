@@ -152,7 +152,9 @@ class GraphBuilderWidget(AnnDataOperatorWidget):
         worker = self._build_graph()
         worker.start()
         worker.finished.connect(
-            lambda: self.events.adata_changed(adata=self.adata))
+            lambda: self.events.adata_changed(adata=self.adata)
+        )
+
 
 class NolanComputeWidget(AnnDataOperatorWidget):
     """Implementation of the cellular neighborhoods identification notebook:
@@ -164,9 +166,9 @@ class NolanComputeWidget(AnnDataOperatorWidget):
         #: Emits a signal when the CNs are computed. Used by the accompanying
         # plot widget.
         self.events = EmitterGroup(
-            source=self, 
+            source=self,
             adata_changed=None,
-            cns_computed=None # for preloaded CNs
+            cns_computed=None,  # for preloaded CNs
         )
 
         super().__init__(viewer, adata)
@@ -231,10 +233,10 @@ class NolanComputeWidget(AnnDataOperatorWidget):
             # library_key=self.library_key.value,
             k_kmeans=ks,
             mini_batch_kmeans=self.mini_batch_kmeans_toggle.value,
-        )    
+        )
         self.compute_cns_button.enabled = True
         return self.adata
-    
+
     def compute_nolan_cns(self) -> None:
         """Compute cellular neighborhoods over a range of many different k or
         number of CNs."""
@@ -244,8 +246,12 @@ class NolanComputeWidget(AnnDataOperatorWidget):
 
     def update_model(self, adata):
         super().update_model(adata)
-        if "cn_inertias" in adata.uns and "cn_enrichment_matrices" in adata.uns:
+        if (
+            "cn_inertias" in adata.uns
+            and "cn_enrichment_matrices" in adata.uns
+        ):
             self.events.cns_computed(adata=adata)
+
 
 class NolanPlotWidget(QTabWidget):
     """Accompoanying plot widget for the NolanComputeWidget. Contains the
@@ -387,14 +393,16 @@ class NolanWidget(QTabWidget):
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
         self.events = EmitterGroup(
-            source=self, 
-            adata_changed=None, # Passes NolanComputeWidget output
+            source=self,
+            adata_changed=None,  # Passes NolanComputeWidget output
         )
         super().__init__()
         self.viewer = viewer
 
         self.compute_tab = NolanComputeWidget(self.viewer, adata)
-        self.compute_tab.events.adata_changed.connect(self.events.adata_changed)
+        self.compute_tab.events.adata_changed.connect(
+            self.events.adata_changed
+        )
         self.addTab(self.compute_tab.native, "Compute")
 
         self.plot_tab = NolanPlotWidget(self.viewer, self.compute_tab)
@@ -409,9 +417,8 @@ class ProximityDensityComputeWidget(AnnDataOperatorWidget):
         #: Emits a signal when the proximity density is computed. Used by the
         # accompanying plot widget.
         self.events = EmitterGroup(
-            source=self,
-            adata_changed=None,
-            prox_computed=None)
+            source=self, adata_changed=None, prox_computed=None
+        )
         super().__init__(viewer, adata)
 
     def reset_choices(self) -> None:
@@ -521,6 +528,7 @@ class ProximityDensityComputeWidget(AnnDataOperatorWidget):
         if "proximity_density_results" in adata.uns:
             self.events.prox_computed(adata=adata)
 
+
 class ProximityDensityPlotWidget(QTabWidget):
     """Accompanying plot widget for the ProximityDensityComputeWidget.
     TODO: IMPLEMENT PLOT"""
@@ -566,14 +574,16 @@ class ProximityDensityWidget(QTabWidget):
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
         self.events = EmitterGroup(
-            source=self, 
-            adata_changed=None, # Passes ProximityDensityComputeWidget output
+            source=self,
+            adata_changed=None,  # Passes ProximityDensityComputeWidget output
         )
         super().__init__()
         self.viewer = viewer
 
         self.compute_tab = ProximityDensityComputeWidget(self.viewer, adata)
-        self.compute_tab.events.adata_changed.connect(self.events.adata_changed)
+        self.compute_tab.events.adata_changed.connect(
+            self.events.adata_changed
+        )
         self.addTab(self.compute_tab.native, "Compute")
 
         self.plot_tab = ProximityDensityPlotWidget(

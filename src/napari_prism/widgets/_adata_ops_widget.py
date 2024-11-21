@@ -114,11 +114,13 @@ class SpatialAnalysisTab(QTabWidget):
         )
         self.addTab(self.proximity_density, "Proximity Density")
 
+
 class FeatureModellingTab(QTableWidget):
     def __init__(self, viewer: "napari.viewer.Viewer", adata, subsetter):
         super().__init__()
         self.viewer = viewer
         self.subsetter = subsetter
+
 
 class AnnDataAnalysisParentWidget(QWidget):
     """UI tabs."""
@@ -193,9 +195,7 @@ class AnnDataAnalysisParentWidget(QWidget):
 
         self.tabs = QTabWidget()
 
-        self.cell_typing_tab = CellTypingTab(
-            viewer, adata, self.subsetter
-        )
+        self.cell_typing_tab = CellTypingTab(viewer, adata, self.subsetter)
 
         self.spatial_analysis_tab = SpatialAnalysisTab(
             viewer, adata, self.subsetter
