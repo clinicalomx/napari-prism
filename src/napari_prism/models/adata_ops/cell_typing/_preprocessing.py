@@ -53,6 +53,8 @@ def with_current_backend(function: Callable) -> Callable:
     def wrapper(adata, **kwargs):
         backend = _current_backend["module"]
         if backend == "rapids_singlecell":
+            if adata.is_view:
+                adata = adata.copy()
             sc_backend.get.anndata_to_GPU(adata)
 
         function_kwargs = trim_kwargs(kwargs, function)
@@ -92,7 +94,7 @@ def filter_by_obs_count(
     min_value: float | None = None,
     max_value: float | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Filters cells which belong to a category in `AnnData.obs` with a cell
     count less than a `min_value` and/or more than a `max_value`. If layer is
     None, does this on .X.
@@ -148,7 +150,7 @@ def filter_by_obs_value(
     min_value: float | None = None,
     max_value: float | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Filters cells which have a value of a given `AnnData.obs` column less
     than a `min_value` and/or more than a `max_value`.
 
@@ -185,10 +187,10 @@ def filter_by_obs_value(
         max_value = MAX_DEFAULT
 
     if min_value is not None:
-        adata[adata.obs[obs_col] > min_value]
+        adata = adata[adata.obs[obs_col] > min_value]
 
     if max_value is not None:
-        adata[adata.obs[obs_col] < max_value]
+        adata = adata[adata.obs[obs_col] < max_value]
 
     if copy:
         return adata
@@ -200,7 +202,7 @@ def filter_by_obs_quantile(
     min_quantile: float | None = None,
     max_quantile: float | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Filters cells which have a value of a given `AnnData.obs` column less
     than the `min_quantile` and/or more than the `max_quantile`.
 
@@ -260,7 +262,7 @@ def filter_by_var_value(
     max_value: float | None = None,
     layer: str | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Filters cells which have a value of a given `AnnData.var` column less
     than a `min_value` and/or more than a `max_value`.
 
@@ -298,6 +300,7 @@ def filter_by_var_value(
 
     if min_value is not None:
         adata = adata[arr > min_value]
+        arr = adata[:, var].X if layer is None else adata[:, var].layers[layer]
 
     if max_value is not None:
         adata = adata[arr < max_value]
@@ -313,7 +316,7 @@ def filter_by_var_quantile(
     max_quantile: float | None = None,
     layer: str | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Filters cells which have a value of a given `AnnData.var` column less
     than the `min_quantile` and/or more than the `max_quantile`.
 
@@ -351,6 +354,7 @@ def filter_by_var_quantile(
         assert min_quantile >= 0 and min_quantile <= 1
         min_var_val = np.quantile(arr, min_quantile)
         adata = adata[arr > min_var_val]
+        arr = adata[:, var].X if layer is None else adata[:, var].layers[layer]
 
     if max_quantile is not None:
         assert max_quantile >= 0 and max_quantile <= 1
@@ -360,13 +364,12 @@ def filter_by_var_quantile(
     if copy:
         return adata
 
-
 def fill_na(
     adata: AnnData,
     fill_value: float = 0.0,
     layer: str | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Fill NaNs in a given layer or .X with a given value.
 
     Args:
@@ -392,7 +395,7 @@ def fill_na(
 
 
 @with_current_backend
-def log1p(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
+def log1p(adata: AnnData, copy: bool = True, **kwargs) -> AnnData | None:
     """Apply log1p transformation (natural log transform with pseudocount) to a
     given layer or .X. Wraps `sc.pp.log1p` or `rsc.pp.log1p`.
 
@@ -413,7 +416,7 @@ def arcsinh(
     cofactor: float = 150,
     layer: str | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Apply arcsinh transformation with a given cofactor to a given layer or
     .X.
 
@@ -444,7 +447,7 @@ def zscore(
     adata: AnnData,
     layer: str | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Apply z-score transformation along the rows of a given layer or .X. Each
     cell's expression across vars will be scored -1 to 1.
 
@@ -475,7 +478,7 @@ def zscore(
 @with_current_backend
 def scale(
     adata: AnnData, layer: str | None = None, copy: bool = True, **kwargs
-) -> AnnData:
+) -> AnnData | None:
     """Scale columns and rows to have 0 mean and unit variance in a given layer
     or .X. Wraps `scanpy.pp.scale` or `rsc.pp.scale`.
 
@@ -498,7 +501,7 @@ def percentile(
     percentile: float = 95,
     layer: str | None = None,
     copy: bool = True,
-) -> AnnData:
+) -> AnnData | None:
     """Normalise data to the 95th or 99th percentile. Axis = 0, or per column.
     Wraps `np.percentile`.
 
@@ -547,7 +550,7 @@ def neighbors(
     adata: AnnData,
     copy: bool = True,
     **kwargs,
-) -> AnnData:
+) -> AnnData | None:
     """Compute a neighborhood graph in a given expression or embedding space.
     Wrapper for `scanpy.pp.neighbors` or `rsc.pp.neighbors`.
 

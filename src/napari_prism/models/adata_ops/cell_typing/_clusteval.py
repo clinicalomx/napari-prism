@@ -32,7 +32,6 @@ class ClusteringSearchEvaluator:
             gpu (bool, optional): If available, attempts to use GPU for
                 clustering. Defaults to False.
         """
-        self.adata = adata
         self.searcher_name = searcher_name
 
         #: pd.DataFrame of labels from clustering search

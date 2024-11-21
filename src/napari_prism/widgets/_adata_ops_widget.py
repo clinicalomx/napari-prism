@@ -36,7 +36,7 @@ class CellTypingTab(QTabWidget):
         self.augmentation.max_height = 400
         self.augmentation.events.augment_created.connect(
             lambda x: self.subsetter.add_node_to_current(
-                x.value[0], node_label=x.value[1]
+                x.adata, node_label=x.label
             )
         )
         self.addTab(self.augmentation.native, "Augmentation")
@@ -45,21 +45,33 @@ class CellTypingTab(QTabWidget):
         self.preprocessor.max_height = 900
         self.preprocessor.events.augment_created.connect(
             lambda x: self.subsetter.add_node_to_current(
-                x.value[0], node_label=x.value[1]
+                x.adata, node_label=x.label
             )
+        )
+        self.preprocessor.events.adata_changed.connect(
+            lambda x: self.subsetter.update_model(x.adata)
         )
         self.addTab(self.preprocessor.native, "Preprocessing")
 
         self.clustering_searcher = ClusterSearchWidget(self.viewer, adata)
         self.clustering_searcher.max_height = 400
+        self.clustering_searcher.events.adata_changed.connect(
+            lambda x: self.subsetter.update_model(x.adata)
+        )
         self.addTab(self.clustering_searcher.native, "Clustering Search")
 
         self.cluster_assessment = ClusterAssessmentWidget(self.viewer, adata)
         self.cluster_assessment.max_height = 700
+        self.cluster_assessment.events.adata_changed.connect(
+            lambda x: self.subsetter.update_model(x.adata)
+        )
         self.addTab(self.cluster_assessment.native, "Assess Cluster Runs")
 
         self.cluster_annotator = ClusterAnnotatorWidget(self.viewer, adata)
         self.cluster_annotator.max_height = 900
+        self.cluster_annotator.events.adata_changed.connect(
+            lambda x: self.subsetter.update_model(x.adata)
+        )
         self.addTab(self.cluster_annotator.native, "Annotate Clusters")
 
         # Needs root access
@@ -67,7 +79,7 @@ class CellTypingTab(QTabWidget):
         self.subclusterer.max_height = 700
         self.subclusterer.events.subcluster_created.connect(
             lambda x: self.subsetter.add_node_to_current(
-                x.value[0], node_label=x.value[1]
+                x.adata, node_label=x.label
             )
         )
         self.addTab(self.subclusterer.native, "Subclusterer")
@@ -83,23 +95,30 @@ class SpatialAnalysisTab(QTabWidget):
 
         self.graph_builder = GraphBuilderWidget(self.viewer, adata)
         self.graph_builder.max_height = 400
+        self.graph_builder.events.adata_changed.connect(
+            lambda x: self.subsetter.update_model(x.adata)
+        )
         self.addTab(self.graph_builder.native, "Build Graph")
 
         self.nolan_cn = NolanWidget(self.viewer, adata)
         self.nolan_cn.max_height = 400
+        self.nolan_cn.events.adata_changed.connect(
+            lambda x: self.subsetter.update_model(x.adata)
+        )
         self.addTab(self.nolan_cn, "Cellular Neighborhoods")
 
         self.proximity_density = ProximityDensityWidget(self.viewer, adata)
         self.proximity_density.max_height = 400
+        self.proximity_density.events.adata_changed.connect(
+            lambda x: self.subsetter.update_model(x.adata)
+        )
         self.addTab(self.proximity_density, "Proximity Density")
-
 
 class FeatureModellingTab(QTableWidget):
     def __init__(self, viewer: "napari.viewer.Viewer", adata, subsetter):
         super().__init__()
         self.viewer = viewer
         self.subsetter = subsetter
-
 
 class AnnDataAnalysisParentWidget(QWidget):
     """UI tabs."""
@@ -131,7 +150,7 @@ class AnnDataAnalysisParentWidget(QWidget):
 
         self.events.meta_sdata_changed.connect(self.refresh_adata_choices)
         self.events.meta_sdata_changed.connect(
-            lambda x: AnnDataOperatorWidget.update_sdata_all_operators(x.value)
+            lambda x: AnnDataOperatorWidget.update_sdata_all_operators(x.sdata)
         )
 
         self.layout = QVBoxLayout()
@@ -153,20 +172,20 @@ class AnnDataAnalysisParentWidget(QWidget):
         self.layout.addWidget(self.subsetter.native)
         # When the hotspot changes; update the tree
         self.events.meta_adata_changed.connect(
-            lambda x: self.subsetter.create_model(x.value)
+            lambda x: self.subsetter.create_model(x.adata)
         )  # Create new tree
 
         # When adata changes, update all operators
         self.subsetter.events.adata_created.connect(
-            lambda x: AnnDataOperatorWidget.create_model_all_operators(x.value)
+            lambda x: AnnDataOperatorWidget.create_model_all_operators(x.adata)
         )
 
         self.subsetter.events.adata_changed.connect(
-            lambda x: AnnDataOperatorWidget.update_model_all_operators(x.value)
+            lambda x: AnnDataOperatorWidget.update_model_all_operators(x.adata)
         )
 
         self.subsetter.events.adata_saved.connect(
-            lambda x: self.save_adata_to_sdata(x.value)
+            lambda x: self.save_adata_to_sdata(x.adata)
         )
 
         # Hotdesk Adata
@@ -174,7 +193,9 @@ class AnnDataAnalysisParentWidget(QWidget):
 
         self.tabs = QTabWidget()
 
-        self.cell_typing_tab = CellTypingTab(viewer, adata, self.subsetter)
+        self.cell_typing_tab = CellTypingTab(
+            viewer, adata, self.subsetter
+        )
 
         self.spatial_analysis_tab = SpatialAnalysisTab(
             viewer, adata, self.subsetter
@@ -202,7 +223,8 @@ class AnnDataAnalysisParentWidget(QWidget):
             return []
 
     def get_layers_with_valid_contained_sdata(self, widget=None):
-        # Reference to the sdata in ithe main mutliscale image
+        # Reference to the sdata in ithe main mutliscale image / labels
+        # similar to 'Tables annotating layers' from napari-spatialdata
         return [
             x.name
             for x in self.viewer.layers
@@ -258,12 +280,12 @@ class AnnDataAnalysisParentWidget(QWidget):
             or self.meta_sdata is not sdata
         ):
             self.meta_sdata = sdata
-            self.events.meta_sdata_changed(value=self.meta_sdata)
+            self.events.meta_sdata_changed(sdata=self.meta_sdata)
 
     def update_adata_model(self):
         selection = self._adata_selection.value
         self.meta_adata = self.meta_sdata[selection]
-        self.events.meta_adata_changed(value=self.meta_adata)
+        self.events.meta_adata_changed(adata=self.meta_adata)
 
     def refresh_adata_choices(self):
         self._adata_selection.reset_choices()
@@ -287,7 +309,7 @@ class AnnDataAnalysisParentWidget(QWidget):
             self.meta_sdata, save_name
         )
         # Can parse AnnData directly as it will inherit the attrs from uns
-        self.meta_sdata[new_selection_label] = new_adata
+        self.meta_sdata.tables[new_selection_label] = new_adata.copy()
         self.meta_sdata.write_element(new_selection_label)
         self._adata_selection.reset_choices()
         labels_name = new_adata.uns["spatialdata_attrs"]["region"]

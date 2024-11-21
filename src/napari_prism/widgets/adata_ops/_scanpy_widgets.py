@@ -8,6 +8,7 @@ from magicgui.widgets import ComboBox, create_widget
 from matplotlib.lines import Line2D
 from napari.utils import DirectLabelColormap
 from napari.utils.colormaps import label_colormap
+from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QWidget
 
 from napari_prism import pp, tl
@@ -298,6 +299,7 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
     objects."""
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
+        self.events = EmitterGroup(source=self, adata_changed=None)
         super().__init__(viewer, adata)
         self.current_layer = None
         self.gpu = False
@@ -315,6 +317,8 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         self.current_layer = layer
 
     def update_model(self, adata: AnnData) -> None:
+        # TODO: block if adata_changed emitted by this widget to
+        # prevent double updates
         self.adata = adata
 
     def create_parameter_widgets(self) -> None:
@@ -610,8 +614,7 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
         }
         scanpy_function = self.embedding_functions_selection.value
         kwargs = self.collect_parameters()
-        self.adata = function_map[scanpy_function](
+        adata = function_map[scanpy_function](
             self.adata, copy=True, **kwargs
         )
-        # Refresh widgets subscribing to anndata
-        AnnDataOperatorWidget.update_model_all_operators(self.adata)
+        self.events.adata_changed(adata=adata)

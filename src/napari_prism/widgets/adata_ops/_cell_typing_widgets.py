@@ -106,7 +106,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             layout.itemAt(i).widget().setParent(None)
 
         if emit:
-            self.events.adata_created(value=self.adata)
+            self.events.adata_created(adata=self.adata)
 
         self.create_parameter_widgets()
 
@@ -120,8 +120,10 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
                 True.
         """
         self.adata = adata
+        current_node = self.adata_tree_widget.currentItem()
+        current_node.adata = adata
         if emit:
-            self.events.adata_changed(value=self.adata)
+            self.events.adata_changed(adata=self.adata)
 
     def refresh_node_labels(self) -> None:
         """Updates the labels, info, tooltips of the AnnData nodes in the tree.
@@ -174,11 +176,6 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             save_action.triggered.connect(lambda: self.save_current_node())
             context_menu.addAction(save_action)
 
-            # rename action
-            rename_action = QAction("Rename", self.native)
-            rename_action.triggered.connect(lambda: self.rename_node(item))
-            context_menu.addAction(rename_action)
-
             # annotate action; TODO
             annotate_action = QAction("Annotate Obs", self.native)
             annotate_action.triggered.connect(lambda: self.annotate_node_obs())
@@ -199,7 +196,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         current_node = self.adata_tree_widget.currentItem()
         current_node.inherit_children_obs()
         adata_out = current_node.adata
-        self.events.adata_saved(value=adata_out)
+        self.events.adata_saved(adata=adata_out)
 
     def rename_node(self, node: AnnDataNodeQT) -> None:
         """Renames the text of the node. If the new name already exists within
@@ -342,6 +339,7 @@ class AugmentationWidget(AnnDataOperatorWidget):
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
         #: Events for when an anndata object is augmented (created)
+        # augment created events return the AnnData and the node label
         self.events = EmitterGroup(source=self, augment_created=None)
         super().__init__(viewer, adata)
 
@@ -430,7 +428,7 @@ class AugmentationWidget(AnnDataOperatorWidget):
         if var_keys != []:
             aug_adata = subset_adata_by_var(self.adata, var_keys)
             node_label = "subset" + "_".join(var_keys)
-            self.events.augment_created(value=(aug_adata, node_label))
+            self.events.augment_created(adata=aug_adata, label=node_label)
 
     def _add_obs_as_var(self) -> None:
         """Create a new AnnData object with the selected obs keys added as
@@ -443,7 +441,7 @@ class AugmentationWidget(AnnDataOperatorWidget):
         if obs_keys[0] is not None:
             aug_adata = add_obs_as_var(self.adata, obs_keys, layer_key)
             node_label += f"_{'_'.join(obs_keys)}"
-            self.events.augment_created(value=(aug_adata, node_label))
+            self.events.augment_created(adata=aug_adata, label=node_label)
 
     def get_obs_keys(self, widget=None) -> list[str]:
         """Get the .obs keys from the AnnData object."""
@@ -460,7 +458,7 @@ class QCWidget(AnnDataOperatorWidget):
         #: Events for when an anndata object is augmented (created)
         self.events = EmitterGroup(source=self, augment_created=None)
         super().__init__(viewer, adata)
-
+        
         #: Range slider for the upper and lower bound of histogram plots
         self.range_slider = None
 
@@ -485,6 +483,9 @@ class QCWidget(AnnDataOperatorWidget):
 
     def update_layer(self, layer: str) -> None:
         self.current_layer = layer
+        if self.qc_selection.value is not None and \
+            (self.obs_selection is not None or self.var_selection is not None):
+            self.update_plot()
 
     def create_parameter_widgets(self) -> None:
         """Dynamically create parameter widgets for the QC widget. Starts off as
@@ -687,7 +688,8 @@ class QCWidget(AnnDataOperatorWidget):
         if self.current_key == "obs":
             obs_key = self.obs_selection.value
             min_val, max_val = self.range_slider.value()
-            aug_adata = qc_func(self.adata, obs_key, min_val, max_val)
+            aug_adata = qc_func(
+                self.adata, obs_key, min_val, max_val, copy=True)
             if self.obs_selection.value is not None:
                 node_label = node_label.replace(
                     "obs", self.obs_selection.value
@@ -697,7 +699,8 @@ class QCWidget(AnnDataOperatorWidget):
             var_key = self.var_selection.value
             min_val, max_val = self.range_slider.value()
             aug_adata = qc_func(
-                self.adata, var_key, min_val, max_val, self.current_layer
+                self.adata, var_key, min_val, max_val, self.current_layer,
+                copy=True
             )
             if self.var_selection.value is not None:
                 node_label = node_label.replace(
@@ -705,7 +708,7 @@ class QCWidget(AnnDataOperatorWidget):
                 )
 
         if aug_adata is not None:
-            self.events.augment_created(value=(aug_adata, node_label))
+            self.events.augment_created(adata=aug_adata, label=node_label)
 
     def local_create_parameter_widgets(self) -> None:
         """Create the appropriate widgets tailored for the selected QC
@@ -820,9 +823,9 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         #: Events for when an anndata object is augmented (created)
         self.events = EmitterGroup(
             source=self,
-            augment_created=None,  # Out
+            augment_created=None, # Passes on QCWidget output
+            adata_changed=None, # Passes on ScanpyFunctionWidget output
         )
-
         super().__init__(viewer, adata)
 
     def create_model(self, adata: AnnData) -> None:
@@ -903,6 +906,11 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         self._expression_selector.changed.connect(
             lambda x: self.embeddings_tab_cls.update_layer(x)
         )
+
+        # outgoing
+        self.embeddings_tab_cls.events.adata_changed.connect(
+            self.events.adata_changed)
+
         self.processing_tabs.addTab(
             self.embeddings_tab_cls.native, "Embeddings"
         )
@@ -941,18 +949,23 @@ class PreprocessingWidget(AnnDataOperatorWidget):
         self.set_selected_expression_layer_as_X()
         transform_label = ""
         for transform in self.transforms_list.value:
-            transform_map[transform.name](self.adata, copy=False)
+            self.adata = transform_map[transform.name](
+                self.adata, copy=True, layer=None)
             transform_label += f"{transform.name}_"
         transform_label += self._expression_selector.value
         self.adata.layers[transform_label] = self.adata.X
-        AnnDataOperatorWidget.refresh_widgets_all_operators()
-
+        self.events.adata_changed(adata=self.adata)
 
 class ClusterSearchWidget(AnnDataOperatorWidget):
     """Widget for performing multiple clustering runs of AnnData objects over
     a range of parameters."""
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
+        #: Events for when an anndata object is changed
+        self.events = EmitterGroup(
+            source=self,
+            adata_changed=None,
+        )
         super().__init__(viewer, adata)
 
     def create_model(self, adata):
@@ -1091,20 +1104,20 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
 
         # Validate pca has been run
         try:
-            self.adata = self.model.parameter_search(
+            adata = self.model.parameter_search(
                 self.adata,
                 embedding_name=self.embedding_selector.value,
                 ks=ks,
                 rs=rs,
                 min_size=min_size,
             )
+            self.run_param_search_button.enabled = True
+            return adata
 
         # pass
         except ValueError as e:
             self.run_param_search_button.enabled = True
             raise ValueError(e) from None  # Just log but set to True
-
-        self.run_param_search_button.enabled = True
 
     def run_param_search_local(self) -> None:
         """Run the parameter search for the selected clustering method on the
@@ -1114,9 +1127,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
         """
         worker = self._param_search_local()
         worker.start()
-        worker.finished.connect(
-            AnnDataOperatorWidget.refresh_widgets_all_operators
-        )
+        worker.returned.connect(self.events.adata_changed)
 
     def _param_search_slurm(self):
         raise NotImplementedError("Not implemented yet")
@@ -1140,8 +1151,14 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
     from ClusterSearchWidget."""
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
+        #: Events for when an anndata object is changed
+        self.events = EmitterGroup(
+            source=self,
+            adata_changed=None,
+        )
         #: Cluster Evaluator model
         self.model = None
+
         super().__init__(viewer, adata)
 
     def create_model(self, adata):
@@ -1149,6 +1166,8 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
 
     def update_model(self, adata):
         self.adata = adata
+        if self.model is not None:
+            self.update_model_local(self._cluster_run_selector.value)
 
     def update_model_local(self, run_selector_val: str) -> None:
         """Update the evaluator model based on the selected clustering run.
@@ -1241,7 +1260,7 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
             cluster_labels
         )
 
-        AnnDataOperatorWidget.refresh_widgets_all_operators()
+        self.events.adata_changed(adata=self.adata)
 
     def get_ks(self, widget=None) -> list[str | int]:
         """Get the available K values from the clustering runs."""
@@ -1271,7 +1290,6 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
 
             return available_runs
 
-
 class ClusterAnnotatorWidget(AnnDataOperatorWidget):
     """Widget for annotating cluster or categorical .obs columns in the AnnData
     object using a live editable annotation table and plots which visualise mean
@@ -1281,8 +1299,14 @@ class ClusterAnnotatorWidget(AnnDataOperatorWidget):
     DEFAULT_ANNOTATION_NAME = "Annotation"
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
-        self.annotation_table = None
+        #: Events for when an anndata object is changed
+        self.events = EmitterGroup(
+            source=self,
+            adata_changed=None,
+        )
         super().__init__(viewer, adata)
+
+        self.annotation_table = None
 
     def create_model(self, adata: AnnData) -> None:
         self.update_model(adata)
@@ -1343,7 +1367,8 @@ class ClusterAnnotatorWidget(AnnDataOperatorWidget):
             dict(zip(original_labels, new_labels, strict=False))
         )
         self.adata.obs[new_obs] = self.adata.obs[new_obs].astype("category")
-        AnnDataOperatorWidget.refresh_widgets_all_operators()
+
+        self.events.adata_changed(adata=self.adata)
 
     def get_obs_categories(self, widget=None) -> list[str]:
         """Get the available categories from the selected .obs key."""
@@ -1362,7 +1387,7 @@ class SubclusteringWidget(AnnDataOperatorWidget):
     AnnData subset to a select group of .var keys."""
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
-        #: Events for when a subcluster/subset is created
+        #: Events for when an AnnData subcluster is created
         self.events = EmitterGroup(source=self, subcluster_created=None)
         super().__init__(viewer, adata)
 
@@ -1442,7 +1467,7 @@ class SubclusteringWidget(AnnDataOperatorWidget):
         # Add to tree
         node_label = label if label is not None else obs + var_suffix
 
-        self.events.subcluster_created(value=(adata_subset, node_label))
+        self.events.subcluster_created(adata=adata_subset, label=node_label)
 
     def get_obs_categories(self, widget=None) -> list[str]:
         """Get the available categories from the selected .obs key."""

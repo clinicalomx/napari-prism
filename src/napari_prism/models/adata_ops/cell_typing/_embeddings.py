@@ -50,6 +50,8 @@ def with_current_backend(function: Callable) -> Callable:
     def wrapper(adata, **kwargs):
         backend = _current_backend["module"]
         if backend == "rapids_singlecell":
+            if adata.is_view:
+                adata = adata.copy()
             sc_backend.get.anndata_to_GPU(adata)
 
         function_kwargs = trim_kwargs(kwargs, function)
