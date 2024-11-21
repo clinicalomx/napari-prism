@@ -123,7 +123,13 @@ class FeatureModellingTab(QTableWidget):
 
 
 class AnnDataAnalysisParentWidget(QWidget):
-    """UI tabs."""
+    """UI tabs.
+
+    This acts like a viewer-model.
+
+    NOTE: FUTURE: Consider replacing or extending this with napari-spatialdata's
+    DataModel, or adding it as a parameter.
+    """
 
     def __init__(self, viewer: "napari.viewer.Viewer"):
         super().__init__()
@@ -141,11 +147,6 @@ class AnnDataAnalysisParentWidget(QWidget):
 
         # self.viewer.layers.events.inserted.connect(self.refresh_choices_from_image)
         # self.viewer = viewer
-
-        # Maintain adata state of current selected layer
-        # self.loader = LoaderWidget(self.viewer)
-        # self.loader.max_height = 200
-        # self.addTab(self.loader.native, "Loader")
         self.viewer.layers.selection.events.changed.connect(
             self.update_sdata_model
         )
@@ -224,6 +225,7 @@ class AnnDataAnalysisParentWidget(QWidget):
 
     def get_layers_with_valid_contained_sdata(self, widget=None):
         # Reference to the sdata in ithe main mutliscale image / labels
+        # TODO: change to labels input
         # similar to 'Tables annotating layers' from napari-spatialdata
         return [
             x.name
@@ -257,17 +259,29 @@ class AnnDataAnalysisParentWidget(QWidget):
         return layers
 
     def is_valid_selection(self, selected):
+        """Determines if the selected layer is a valid parent layer from which
+        to retrieve SpatialData AND AnnData objects from.
+        """
+        #TODO: optimise below, maybe use walrus, but less readable
         return (
             selected is not None
+            # and isinstance(
+            #     selected.data, napari.layers._multiscale_data.MultiScaleData
+            # )
             and isinstance(
-                selected.data, napari.layers._multiscale_data.MultiScaleData
+                selected, napari.layers.Labels
             )
             and "sdata" in selected.metadata
             and selected.metadata["sdata"] is not None
             and selected.metadata["sdata"].is_backed()
+            and "adata" in selected.metadata
+            and selected.metadata["adata"] is not None
+            and "table_names" in selected.metadata
+            and len(selected.metadata["table_names"]) > 0
         )
 
     def update_sdata_model(self):
+        """NOTE: Consider using napari-spatialdata's DataModel."""
         selected = self.viewer.layers.selection.active
         sdata = None
         if self.is_valid_selection(selected):

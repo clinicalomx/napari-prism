@@ -53,7 +53,8 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
 
 class AnnDataSubsetterWidget(BaseNapariWidget):
     """Widget for subsetting anndata objects. Holds a QTreeWidget for
-    organising AnnData objects in a tree-like structure."""
+    organising AnnData objects in a tree-like structure.
+    """
 
     def __init__(
         self,
@@ -480,6 +481,11 @@ class QCWidget(AnnDataOperatorWidget):
 
         #: Current expression layer in the AnnData object to filter and qc by
         self.current_layer = None
+
+    def update_model(self, adata):
+        # If AnnData changed, then reset qc tab.
+        super().update_model(adata)
+        self.qc_selection.value = None
 
     def update_layer(self, layer: str) -> None:
         self.current_layer = layer
@@ -930,7 +936,7 @@ class PreprocessingWidget(AnnDataOperatorWidget):
             )
             self.gpu_toggle_button.changed.connect(self._gpu_toggle)
             self.gpu_toggle_button.changed.connect(
-                self.embeddings_tab_cls.gpu_toggle
+                self.embeddings_tab_cls.gpu_toggle # tl is toggled there
             )
             self.extend([self.gpu_toggle_button])
 
@@ -976,6 +982,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
             adata_changed=None,
         )
         super().__init__(viewer, adata)
+        self.backend = "CPU"
 
     def create_model(self, adata):
         self.adata = adata
@@ -984,8 +991,23 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
         self.adata = adata
         self.reset_choices()
 
+    def _gpu_toggle(self) -> None:
+        """Toggle between using the GPU or CPU version of the model."""
+        if self.gpu_toggle_button.value is True:
+            self.backend = "GPU"
+        else:
+            self.backend = "CPU"
+
     def create_parameter_widgets(self) -> None:
         """Create widgets for the clustering search widget."""
+        self.gpu_toggle_button = None
+        if gpu_available():
+            self.gpu_toggle_button = create_widget(
+                value=False, name="Use GPU", annotation=bool
+            )
+            self.gpu_toggle_button.changed.connect(self._gpu_toggle)
+            self.extend([self.gpu_toggle_button])
+            
         # user selects layers
         self.embedding_selector = ComboBox(
             name="EmbeddingLayers",
@@ -1048,42 +1070,16 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
             ]
         )
 
-    def get_available_backend(
-        self, cluster_method: str = "phenograph"
-    ) -> None:
-        """Get the available backend for the clustering methods. If no GPU is
-        available, then the backend is forced to be CPU.
-        """
-        # If no GPU, enforce all to be CPU
-        if cluster_method == "phenograph":
-            try:
-                import cugraph  # type: ignore # noqa: F401
-                import cuml  # type: ignore # noqa: F401
-
-                return "GPU"
-            except ImportError:
-                return "CPU"
-        elif cluster_method == "scanpy":
-            try:
-                import rapids_singlecell  # type: ignore # noqa: F401
-
-                return "GPU"
-            except ImportError:
-                return "CPU"
-        else:
-            raise ValueError("Cluster method not recognised.")
-
     def _build_model(self) -> None:
         """Build the clustering model based on the selected clustering method,
         and the available backend."""
         selected_cluster_method = self.cluster_method_list.value.name
-        backend = self.get_available_backend(selected_cluster_method)
         if selected_cluster_method == "phenograph":
             self.model = HybridPhenographSearch(
-                knn=backend, clusterer=backend
+                knn=self.backend, clusterer=self.backend
             )  # Refiner left alone due to cpu only
         elif selected_cluster_method == "scanpy":
-            self.model = ScanpyClusteringSearch(backend=backend)
+            self.model = ScanpyClusteringSearch(backend=self.backend)
         else:
             raise ValueError("Cluster method not recognised.")
 
@@ -1136,7 +1132,7 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
         """
         worker = self._param_search_local()
         worker.start()
-        worker.returned.connect(self.events.adata_changed)
+        worker.returned.connect(lambda x: self.events.adata_changed(adata=x))
 
     def _param_search_slurm(self):
         raise NotImplementedError("Not implemented yet")
@@ -1157,7 +1153,10 @@ class ClusterSearchWidget(AnnDataOperatorWidget):
 
 class ClusterAssessmentWidget(AnnDataOperatorWidget):
     """Widget for assessing the quality of clustering runs of AnnData objects
-    from ClusterSearchWidget."""
+    from ClusterSearchWidget.
+    
+    Currently CPU only due to changes in cuml score funcs (only MI and ARI).
+    """
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
         #: Events for when an anndata object is changed
@@ -1167,16 +1166,24 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
         )
         #: Cluster Evaluator model
         self.model = None
-
+        self.backend = "CPU"
         super().__init__(viewer, adata)
+
+    # def _gpu_toggle(self) -> None:
+    #     """Toggle between using the GPU or CPU version of the model."""
+    #     if self.gpu_toggle_button.value is True:
+    #         self.backend = "GPU"
+    #     else:
+    #         self.backend = "CPU"
 
     def create_model(self, adata):
         self.update_model(adata)
 
     def update_model(self, adata):
         self.adata = adata
-        if self.model is not None:
-            self.update_model_local(self._cluster_run_selector.value)
+        # if self.model is not None:
+        #     self.update_model_local(self._cluster_run_selector.value)
+        self.reset_choices()
 
     def update_model_local(self, run_selector_val: str) -> None:
         """Update the evaluator model based on the selected clustering run.
@@ -1186,8 +1193,9 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
                 ClusterSearchWidget.
         """
         if self._cluster_run_selector.value is not None:
+            #gpu = True if self.backend == "GPU" else False
             self.model = ClusteringSearchEvaluator(
-                self.adata, run_selector_val
+                self.adata, run_selector_val, gpu=False
             )
         else:
             self.model = None
@@ -1203,6 +1211,14 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
         selector for the clustering run, another selector for the user to export
         a selected run to the AnnData object, and a plot to visualise the
         clustering stability of each run with every other run."""
+        # self.gpu_toggle_button = None
+        # if gpu_available():
+        #     self.gpu_toggle_button = create_widget(
+        #         value=False, name="Use GPU", annotation=bool
+        #     )
+        #     self.gpu_toggle_button.changed.connect(self._gpu_toggle)
+        #     self.extend([self.gpu_toggle_button])
+
         self._cluster_run_selector = ComboBox(
             name="ClusterRuns",
             choices=self.get_cluster_runs,

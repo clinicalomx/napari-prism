@@ -32,6 +32,7 @@ class ClusteringSearchEvaluator:
             gpu (bool, optional): If available, attempts to use GPU for
                 clustering. Defaults to False.
         """
+        self.adata = adata
         self.searcher_name = searcher_name
 
         #: pd.DataFrame of labels from clustering search
@@ -154,6 +155,10 @@ class ClusteringSearchEvaluator:
         """Wrapper function"""
         return self.between_model_score(self.ml.adjusted_rand_score, k)
 
+    def _mutual_info_score(self, k=None):
+        """Wrapper function"""
+        return self.between_model_score(self.ml.mutual_info_score, k)
+    
     def normalized_mutual_info(self, k=None):
         """Wrapper function"""
         return self.between_model_score(
@@ -163,6 +168,10 @@ class ClusteringSearchEvaluator:
     def adjusted_mutual_info(self, k=None):
         """Wrapper function"""
         return self.between_model_score(self.ml.adjusted_mutual_info_score, k)
+    
+    def _mutual_info_score(self, k=None):
+        """Wrapper function"""
+        return self.between_model_score(self.ml.mutual_info_score, k)
 
     def within_model_score(
         self, score_function: callable, k: int | None = None, **kwargs
