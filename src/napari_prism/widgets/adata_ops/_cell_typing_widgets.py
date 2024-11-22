@@ -4,6 +4,7 @@ from enum import Enum
 import loguru
 import napari
 import numpy as np
+import pandas as pd
 from anndata import AnnData
 from magicgui.widgets import ComboBox, Container, Select, Table, create_widget
 from napari.qt.threading import thread_worker
@@ -11,12 +12,18 @@ from napari.utils.events import EmitterGroup
 from qtpy.QtCore import QPoint, Qt, QTimer
 from qtpy.QtWidgets import (
     QAction,
+    QWidget,
+    QPushButton,
     QInputDialog,
     QMenu,
     QMessageBox,
     QTabWidget,
     QTreeWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFileDialog,
 )
+from qtpy.QtGui import QCursor
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
@@ -24,6 +31,7 @@ from napari_prism import pp  # refactored preprocessing class to funcs only
 from napari_prism.models.adata_ops.cell_typing._augmentation import (
     add_obs_as_var,
     subset_adata_by_var,
+    subset_adata_by_obs_category
 )
 from napari_prism.models.adata_ops.cell_typing._clusteval import (
     ClusteringSearchEvaluator,
@@ -52,9 +60,13 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
 
 
 class AnnDataSubsetterWidget(BaseNapariWidget):
-    """Widget for subsetting anndata objects. Holds a QTreeWidget for
-    organising AnnData objects in a tree-like structure.
+    """Widget for holding a tree of anndata objects and subset. 
+    
+    Uses QTreeWidgets for organising AnnData objects in a tree-like structure.
     """
+
+    #: Default name of the new annotation made by the user in the editable table
+    DEFAULT_ANNOTATION_NAME = "Annotation"
 
     def __init__(
         self,
@@ -87,6 +99,9 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         #: Create the root node for the tree widget.
         if adata is not None:
             self.create_model(adata)
+
+        #: Annotation table widget for the obs keys.
+        self.annotation_table = None
 
         #: Create the widgets.
         self.adata_tree_widget = None
@@ -122,7 +137,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         """
         self.adata = adata
         current_node = self.adata_tree_widget.currentItem()
-        current_node.adata = adata
+        current_node.set_adata(adata)
         if emit:
             self.events.adata_changed(adata=self.adata)
 
@@ -177,7 +192,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             save_action.triggered.connect(lambda: self.save_current_node())
             context_menu.addAction(save_action)
 
-            # annotate action; TODO
+            # annotate action
             annotate_action = QAction("Annotate Obs", self.native)
             annotate_action.triggered.connect(lambda: self.annotate_node_obs())
             context_menu.addAction(annotate_action)
@@ -248,17 +263,175 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
                 self.adata_tree_widget.indexOfTopLevelItem(node)
             )
 
+    def get_categorical_obs_keys(self, widget=None) -> list[str]:
+        """Get the .obs keys from the AnnData object that are categorical."""
+        if self.adata is None:
+            return []
+        else:
+            return [
+                x
+                for x in self.adata.obs.columns
+                # if pd.api.types.is_categorical_dtype(self.adata.obs[x])
+                if isinstance(self.adata.obs[x].dtype, pd.CategoricalDtype)
+            ]
+
     def annotate_node_obs(self) -> None:
         """Launch the table annotation widget for the current node.
 
         This widget allows the user to annotate the obs columns of the current
         node in an excel-like table entry, or by importing a CSV file.
         """
-        # current_node = self.adata_tree_widget.currentItem()
-        raise NotImplementedError("Not yet implemented")
+        if self.annotation_table and self.annotation_table_popout:
+            self.annotation_table_popout.removeWidget(self.annotation_table)
+        
+        # Create an obs selection, then create the table
+        popout = QWidget()
+        popout.setWindowTitle("Annotation Table")
+        popout.setAttribute(Qt.WA_DeleteOnClose)
+        layout = QVBoxLayout()
+        popout.resize(200, 500)
+        popout.setLayout(layout)
 
-    def launch_table_annotation_widget(self) -> None:
-        raise NotImplementedError("Not yet implemented")
+        obs_selection = ComboBox(
+            name="ObsKeys",
+            choices=self.get_categorical_obs_keys,
+            label="Select obs keys to annotate",
+            value=None,
+            nullable=True,
+        )
+        obs_selection.scrollable = True
+        layout.addWidget(obs_selection.native)
+
+        button_layout = QHBoxLayout()
+        annotate_button = QPushButton("Annotate")
+        annotate_button.clicked.connect(
+            lambda: _create_annotation_table(obs_selection.value)
+        )
+        csv_button = QPushButton("Import CSV")
+        csv_button.clicked.connect(
+            lambda: self.import_csv_metadata(obs_selection.value))
+        button_layout.addWidget(annotate_button)
+        button_layout.addWidget(csv_button)
+        layout.addLayout(button_layout)
+
+        def _create_annotation_table(label_name):
+            if self.annotation_table is not None:
+                layout.removeWidget(self.annotation_table.native)
+
+            labels = sorted(self.adata.obs[label_name].unique())
+            tbl = {
+                label_name: labels,
+                self.DEFAULT_ANNOTATION_NAME: [None]
+                * len(labels),  # Make header editable
+            }
+
+            self.annotation_table = EditableTable(tbl, name="Annotation Table")
+            self.annotation_table.changed.connect(
+                self.update_obs_mapping
+            )
+
+            # non-blocking pop out table
+            layout.addWidget(self.annotation_table.native)
+            
+        cursor_position = QCursor.pos()
+        popout.move(cursor_position)
+        popout.show()
+        def _nullify_annotation_table_objs():
+            self.annotation_table = None
+            self.annotation_table_popout = None
+
+            popout.destroyed.connect(lambda: _nullify_annotation_table_objs())
+        self.annotation_table_popout = popout
+
+    def update_obs_mapping(self) -> None:
+        """Update the .obs column with values from the the new annotation column
+        in the editable table. Refresh all widgets to show the new annotation
+        column in the .obs of the contained AnnData object."""
+        value = self.annotation_table.value["data"]
+        d = EditableTable.reverse_drop_key_to_val(value)
+        original_obs, original_labels = list(d.items())[0]
+        new_obs, new_labels = list(d.items())[1]
+        if (
+            new_obs != self.DEFAULT_ANNOTATION_NAME
+            and self.DEFAULT_ANNOTATION_NAME in self.adata.obs
+        ):
+            del self.adata.obs[self.DEFAULT_ANNOTATION_NAME]
+
+        self.adata.obs[new_obs] = self.adata.obs[original_obs].map(
+            dict(zip(original_labels, new_labels, strict=False))
+        )
+        self.adata.obs[new_obs] = self.adata.obs[new_obs].astype("category")
+
+        self.update_model(self.adata)
+
+    def import_csv_metadata(self, label_name: str) -> None:
+        """Import multiple metadata columns from a .csv file using `label_name`
+        as the index."""
+        file_path , _ = QFileDialog.getOpenFileName(
+            None,
+            "Select a .csv file",
+            "",
+            "CSV Files (*.csv)",
+        )
+        if not file_path:
+            return
+        
+        try:
+            csv_df = pd.read_csv(file_path)
+            csv_df = csv_df.fillna("None")
+            # Parse dtypes
+            for col in csv_df.columns:
+                try:
+                    csv_df[col] = pd.to_numeric(csv_df[col], error="raise")
+                except ValueError:
+                    csv_df[col] = csv_df[col].astype("category")
+
+        except Exception as e:
+            loguru.logger.error(f"Error reading csv: {e}")
+            return
+        
+        # Check if tma_labels is in csv_df
+        if label_name not in csv_df.columns:
+            message = f"Column {label_name} not found in csv"
+            QMessageBox.warning(
+                None,
+                None,
+                message,
+                QMessageBox.Ok,
+            )
+            loguru.logger.error(message)
+            return
+        
+        else:
+            labels = sorted(self.adata.obs[label_name].unique())
+            tbl = pd.DataFrame({
+                label_name: labels,
+            })
+            # MErge on tma_labels
+            csv_df = csv_df.merge(tbl, how="left", on=label_name)
+    
+            if self.annotation_table:
+                self.annotation_table_popout.layout().removeWidget(
+                    self.annotation_table.native)
+            # Now display the csv in a table widget
+            self.annotation_table = EditableTable(
+                csv_df.to_dict(orient="list"), name="CSV Metadata")
+
+            # Add the CSV table to the popout window
+            self.annotation_table_popout.layout().addWidget(
+                self.annotation_table.native)
+            
+            # Then add a confirm widget
+            def _csv_obs_mapping():
+                self.adata.obs = self.adata.obs.merge(
+                    csv_df, on=label_name, how="right")
+                
+                self.update_model(self.adata)
+
+            confirm_button = QPushButton("Confirm")
+            confirm_button.clicked.connect(
+                lambda: _csv_obs_mapping())
+            self.annotation_table_popout.layout().addWidget(confirm_button)
 
     def create_parameter_widgets(self) -> None:
         """Create the AnnData tree widget. Adds the root node to the tree if
@@ -373,7 +546,6 @@ class AugmentationWidget(AnnDataOperatorWidget):
         )
         self.obs_selection.scrollable = True
         self.obs_selection.changed.connect(self.reset_choices)
-
         self.add_obs_as_var_button = create_widget(
             name="Add as feature", widget_type="PushButton", annotation=bool
         )
@@ -387,11 +559,34 @@ class AugmentationWidget(AnnDataOperatorWidget):
             nullable=True,
         )
         self.var_selection.scrollable = True
-
         self.subset_var_button = create_widget(
             name="Subset by var", widget_type="PushButton", annotation=bool
         )
         self.subset_var_button.changed.connect(self._subset_by_var)
+
+        self.obs_selection_cat = ComboBox(
+            name="ObsKeys",
+            choices=self.get_categorical_obs_keys,
+            label="Select cat. obs keys to subset by",
+            value=None,
+            nullable=True,
+        )
+        self.obs_selection_cat.scrollable = True
+        self.obs_selection_cat.changed.connect(self.reset_choices)
+        self.obs_label_selection = Select(
+            name="ObsCategories",
+            choices=self.get_obs_categories,
+            label="Select categories to include in subset",
+            value=None,
+            nullable=True,
+        )
+        self.obs_label_selection.scrollable = True
+        self.subset_obs_cat_button = create_widget(
+            name="Subset by obs category", 
+            widget_type="PushButton",
+            annotation=bool
+        )
+        self.subset_obs_cat_button.changed.connect(self._subset_by_obs_cat)
 
         self.additive_aug = Container()
         self.additive_aug.extend(
@@ -403,7 +598,15 @@ class AugmentationWidget(AnnDataOperatorWidget):
         )
 
         self.reductive_aug = Container()
-        self.reductive_aug.extend([self.var_selection, self.subset_var_button])
+        self.reductive_aug.extend(
+            [
+                self.var_selection, 
+                self.subset_var_button,
+                self.obs_selection_cat, 
+                self.obs_label_selection, 
+                self.subset_obs_cat_button 
+            ]
+        )
 
         self.augmentation_tabs.addTab(
             self.additive_aug.native, "Additive Augmentation"
@@ -413,6 +616,13 @@ class AugmentationWidget(AnnDataOperatorWidget):
             self.reductive_aug.native, "Reductive Augmentation"
         )
 
+    def get_obs_categories(self, widget=None) -> list[str]:
+        """Get the available categories from the selected .obs key."""
+        if self.obs_selection_cat.value is not None:
+            obs = self.adata.obs[self.obs_selection_cat.value]
+            return obs.unique()
+        return []
+    
     def get_markers(self, widget=None) -> list[str]:
         """Get the .var keys from the AnnData object."""
         if self.adata is None:
@@ -429,6 +639,16 @@ class AugmentationWidget(AnnDataOperatorWidget):
         if var_keys != []:
             aug_adata = subset_adata_by_var(self.adata, var_keys)
             node_label = "subset" + "_".join(var_keys)
+            self.events.augment_created(adata=aug_adata, label=node_label)
+
+    def _subset_by_obs_cat(self) -> None:
+        obs_keys = self.obs_selection_cat.value
+        obs_labels = self.obs_label_selection.value
+        if obs_keys is not None and obs_labels != []:
+            aug_adata = subset_adata_by_obs_category(
+                self.adata, obs_keys, obs_labels
+            )
+            node_label = f"subset_{obs_keys}_{'_'.join(obs_labels)}"
             self.events.augment_created(adata=aug_adata, label=node_label)
 
     def _add_obs_as_var(self) -> None:
@@ -1317,12 +1537,9 @@ class ClusterAssessmentWidget(AnnDataOperatorWidget):
 
 
 class ClusterAnnotatorWidget(AnnDataOperatorWidget):
-    """Widget for annotating cluster or categorical .obs columns in the AnnData
-    object using a live editable annotation table and plots which visualise mean
-    cluster expression values of each cluster group."""
-
-    #: Default name of the new annotation made by the user in the editable table
-    DEFAULT_ANNOTATION_NAME = "Annotation"
+    """Widget for visualising cluster or categorical .obs columns in the AnnData
+    object using plots which visualise mean cluster expression values of each
+    cluster group."""
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
         #: Events for when an anndata object is changed
@@ -1331,8 +1548,6 @@ class ClusterAnnotatorWidget(AnnDataOperatorWidget):
             adata_changed=None,
         )
         super().__init__(viewer, adata)
-
-        self.annotation_table = None
 
     def create_model(self, adata: AnnData) -> None:
         self.update_model(adata)
@@ -1344,68 +1559,19 @@ class ClusterAnnotatorWidget(AnnDataOperatorWidget):
         """Create widgets for the cluster annotator widget. Launches a separate
         plot widget which wraps scanpy heatmap-like plots."""
         self.obs_widget = ScanpyPlotWidget(self.viewer, self.adata)
-        self.obs_selection = self.obs_widget.obs_selection
-        self.obs_selection.changed.connect(self.get_init_table)
         self.extend([self.obs_widget])
 
-    def get_init_table(self, widget=None) -> None:
-        """Initialise the editable table for the user to annotate the selected
-        .obs key. Sorts the .obs key.
+        # # self.obs_selection.changed.connect(self.get_init_table)
 
-        The new annotation column can be renamed by double clicking the header.
-        Annotations for each row (obs category) can be edited by entering a
-        value in the cell, similar to an excel spreadsheet. Values are
-        interpreted as strings.
-        """
-        if self.annotation_table is not None:
-            self.remove(self.annotation_table)
-
-        if self.obs_selection.value is not None:
-            label_name = self.obs_selection.value
-            labels = sorted(self.adata.obs[label_name].unique())
-            tbl = {
-                label_name: labels,
-                self.DEFAULT_ANNOTATION_NAME: [None]
-                * len(labels),  # Make header editable
-            }
-
-            self.annotation_table = EditableTable(tbl, name="Annotation Table")
-            self.annotation_table.changed.connect(
-                self.update_obs_mapping
-            )  # Or connect to callback button
-            self.extend([self.annotation_table])
-
-    def update_obs_mapping(self) -> None:
-        """Update the .obs column with values from the the new annotation column
-        in the editable table. Refresh all widgets to show the new annotation
-        column in the .obs of the contained AnnData object."""
-        value = self.annotation_table.value["data"]
-        d = EditableTable.reverse_drop_key_to_val(value)
-        original_obs, original_labels = list(d.items())[0]
-        new_obs, new_labels = list(d.items())[1]
-        if (
-            new_obs != self.DEFAULT_ANNOTATION_NAME
-            and self.DEFAULT_ANNOTATION_NAME in self.adata.obs
-        ):
-            del self.adata.obs[self.DEFAULT_ANNOTATION_NAME]
-
-        self.adata.obs[new_obs] = self.adata.obs[original_obs].map(
-            dict(zip(original_labels, new_labels, strict=False))
-        )
-        self.adata.obs[new_obs] = self.adata.obs[new_obs].astype("category")
-
-        self.events.adata_changed(adata=self.adata)
-
-    def get_obs_categories(self, widget=None) -> list[str]:
-        """Get the available categories from the selected .obs key."""
-        if (
-            self.obs_selection.value is not None
-            and self.obs_selection.value[0] is not None
-        ):
-            obs = self.adata.obs[self.obs_selection.value[0]]
-            return obs.unique()
-        return []
-
+        # self.launch_annotation_table_button = create_widget(
+        #     name="Launch Annotation Table",
+        #     widget_type="PushButton",
+        #     annotation=bool,
+        # )
+        # self.launch_annotation_table_button.changed.connect(
+        #     self.launch_annotation_table
+        # )
+        # self.extend([self.obs_widget, self.launch_annotation_table_button])
 
 class SubclusteringWidget(AnnDataOperatorWidget):
     """Widget for subclustering a subset of cells in the AnnData object based on
@@ -1428,7 +1594,7 @@ class SubclusteringWidget(AnnDataOperatorWidget):
         self.obs_selection = ComboBox(
             name="ObsKeys",
             choices=self.get_categorical_obs_keys,
-            label="Select a cat. obs key to annotate",
+            label="Select a cat. obs key to subcluster",
             value=None,
             nullable=True,
         )
@@ -1453,7 +1619,6 @@ class SubclusteringWidget(AnnDataOperatorWidget):
         )
         self.var_selection.scrollable = True
 
-        # TODO; this button doesnt work?
         self.subcluster_button = create_widget(
             name="Subcluster", widget_type="PushButton", annotation=bool
         )

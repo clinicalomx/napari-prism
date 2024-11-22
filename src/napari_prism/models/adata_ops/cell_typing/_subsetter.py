@@ -25,7 +25,7 @@ class AnnDataNodeQT(QTreeWidgetItem):
         self.setText(0, name)
         self.setData(0, Qt.UserRole, self.text(0))
 
-        self.adata = adata
+        self.set_adata(adata)
         self.labels = labels
         if labels is not None:
             if not isinstance(self.labels[0], str):
@@ -34,18 +34,6 @@ class AnnDataNodeQT(QTreeWidgetItem):
             if adata is not None:
                 assert len(labels) == adata.shape[0]
                 self.adata.obs[name] = labels
-
-        self.repr_view = QLabel()
-        self.repr_view.setText(self.__repr__())
-        self.treeWidget().setItemWidget(self, 1, self.repr_view)
-        adata_rep = str(self.adata).replace("\n", "\n\n")
-        tooltip = f"""
-             <div style="max-width: 600px;">
-                {adata_rep}
-            </div>
-        """
-        self.setToolTip(0, tooltip)
-        self.setToolTip(1, tooltip)
 
     def __repr__(self):
         def remove_after_n_obs_n_vars(input_string):
@@ -62,9 +50,20 @@ class AnnDataNodeQT(QTreeWidgetItem):
 
         return out_repr
 
-    # Model properties / functionality
+    # NOTE: consider using @property
     def set_adata(self, adata):
         self.adata = adata
+        self.repr_view = QLabel()
+        self.repr_view.setText(self.__repr__())
+        self.treeWidget().setItemWidget(self, 1, self.repr_view)
+        adata_rep = str(self.adata).replace("\n", "\n\n")
+        tooltip = f"""
+             <div style="max-width: 600px;">
+                {adata_rep}
+            </div>
+        """
+        self.setToolTip(0, tooltip)
+        self.setToolTip(1, tooltip)
 
     def get_clusters(self):
         return self.adata.obs[self.name].unique()

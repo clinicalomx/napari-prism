@@ -23,7 +23,6 @@ from napari_prism.widgets.adata_ops._spatial_analysis_widgets import (
     ProximityDensityWidget,
 )
 
-
 class CellTypingTab(QTabWidget):
     """UI tabs."""
 
@@ -72,7 +71,7 @@ class CellTypingTab(QTabWidget):
         self.cluster_annotator.events.adata_changed.connect(
             lambda x: self.subsetter.update_model(x.adata)
         )
-        self.addTab(self.cluster_annotator.native, "Annotate Clusters")
+        self.addTab(self.cluster_annotator.native, "Visualise Clusters")
 
         # Needs root access
         self.subclusterer = SubclusteringWidget(self.viewer, adata)

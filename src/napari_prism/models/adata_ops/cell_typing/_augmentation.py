@@ -64,3 +64,18 @@ def subset_adata_by_var(adata: AnnData, var_subset: list[str]) -> AnnData:
 
     assert all(x in adata.var_names for x in var_subset)
     return adata[:, var_subset]
+
+def subset_adata_by_obs_category(
+        adata: AnnData, obs_subset: list[str]) -> AnnData:
+    """Subsets an AnnData object by obs category or categories.
+
+    Args:
+        adata: Anndata object.
+        obs_subset: .obs names to subset by.
+
+    Returns:
+        View of the subsetted AnnData object.
+    """
+
+    assert all(x in adata.obs.columns for x in obs_subset)
+    return adata[adata.obs.index.isin(obs_subset)]
