@@ -281,9 +281,6 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         This widget allows the user to annotate the obs columns of the current
         node in an excel-like table entry, or by importing a CSV file.
         """
-        if self.annotation_table and self.annotation_table_popout:
-            self.annotation_table_popout.removeWidget(self.annotation_table)
-
         # Create an obs selection, then create the table
         popout = QWidget()
         popout.setWindowTitle("Annotation Table")
@@ -316,9 +313,6 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         layout.addLayout(button_layout)
 
         def _create_annotation_table(label_name):
-            if self.annotation_table is not None:
-                layout.removeWidget(self.annotation_table.native)
-
             labels = sorted(self.adata.obs[label_name].unique())
             tbl = {
                 label_name: labels,
@@ -326,22 +320,16 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
                 * len(labels),  # Make header editable
             }
 
-            self.annotation_table = EditableTable(tbl, name="Annotation Table")
-            self.annotation_table.changed.connect(self.update_obs_mapping)
+            annotation_table = EditableTable(tbl, name="Annotation Table")
+            annotation_table.changed.connect(self.update_obs_mapping)
+            self.annotation_table = annotation_table
 
             # non-blocking pop out table
-            layout.addWidget(self.annotation_table.native)
+            layout.addWidget(annotation_table.native)
 
         cursor_position = QCursor.pos()
         popout.move(cursor_position)
         popout.show()
-
-        def _nullify_annotation_table_objs():
-            self.annotation_table = None
-            self.annotation_table_popout = None
-
-            popout.destroyed.connect(lambda: _nullify_annotation_table_objs())
-
         self.annotation_table_popout = popout
 
     def update_obs_mapping(self) -> None:
@@ -413,18 +401,14 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             # MErge on tma_labels
             csv_df = csv_df.merge(tbl, how="left", on=label_name)
 
-            if self.annotation_table:
-                self.annotation_table_popout.layout().removeWidget(
-                    self.annotation_table.native
-                )
             # Now display the csv in a table widget
-            self.annotation_table = EditableTable(
+            annotation_table = EditableTable(
                 csv_df.to_dict(orient="list"), name="CSV Metadata"
             )
 
             # Add the CSV table to the popout window
             self.annotation_table_popout.layout().addWidget(
-                self.annotation_table.native
+                annotation_table.native
             )
 
             # Then add a confirm widget
