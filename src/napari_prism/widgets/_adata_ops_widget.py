@@ -23,6 +23,7 @@ from napari_prism.widgets.adata_ops._spatial_analysis_widgets import (
     ProximityDensityWidget,
 )
 
+
 class CellTypingTab(QTabWidget):
     """UI tabs."""
 

@@ -2122,7 +2122,6 @@ class TMASegmenter(MultiScaleImageOperations):
                 seg_table.index = str_index.values
                 seg_table["lyr"] = self.image_name + "_labels"
 
-
             seg_table["tma_label"] = seg_table["tma_label"].astype("category")
 
             self.add_label(

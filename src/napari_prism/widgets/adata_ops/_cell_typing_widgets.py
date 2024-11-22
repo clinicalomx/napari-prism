@@ -10,28 +10,28 @@ from magicgui.widgets import ComboBox, Container, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from napari.utils.events import EmitterGroup
 from qtpy.QtCore import QPoint, Qt, QTimer
+from qtpy.QtGui import QCursor
 from qtpy.QtWidgets import (
     QAction,
-    QWidget,
-    QPushButton,
+    QFileDialog,
+    QHBoxLayout,
     QInputDialog,
     QMenu,
     QMessageBox,
+    QPushButton,
     QTabWidget,
     QTreeWidget,
     QVBoxLayout,
-    QHBoxLayout,
-    QFileDialog,
+    QWidget,
 )
-from qtpy.QtGui import QCursor
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
 from napari_prism import pp  # refactored preprocessing class to funcs only
 from napari_prism.models.adata_ops.cell_typing._augmentation import (
     add_obs_as_var,
+    subset_adata_by_obs_category,
     subset_adata_by_var,
-    subset_adata_by_obs_category
 )
 from napari_prism.models.adata_ops.cell_typing._clusteval import (
     ClusteringSearchEvaluator,
@@ -60,8 +60,8 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
 
 
 class AnnDataSubsetterWidget(BaseNapariWidget):
-    """Widget for holding a tree of anndata objects and subset. 
-    
+    """Widget for holding a tree of anndata objects and subset.
+
     Uses QTreeWidgets for organising AnnData objects in a tree-like structure.
     """
 
@@ -283,7 +283,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         """
         if self.annotation_table and self.annotation_table_popout:
             self.annotation_table_popout.removeWidget(self.annotation_table)
-        
+
         # Create an obs selection, then create the table
         popout = QWidget()
         popout.setWindowTitle("Annotation Table")
@@ -309,7 +309,8 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         )
         csv_button = QPushButton("Import CSV")
         csv_button.clicked.connect(
-            lambda: self.import_csv_metadata(obs_selection.value))
+            lambda: self.import_csv_metadata(obs_selection.value)
+        )
         button_layout.addWidget(annotate_button)
         button_layout.addWidget(csv_button)
         layout.addLayout(button_layout)
@@ -326,21 +327,21 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             }
 
             self.annotation_table = EditableTable(tbl, name="Annotation Table")
-            self.annotation_table.changed.connect(
-                self.update_obs_mapping
-            )
+            self.annotation_table.changed.connect(self.update_obs_mapping)
 
             # non-blocking pop out table
             layout.addWidget(self.annotation_table.native)
-            
+
         cursor_position = QCursor.pos()
         popout.move(cursor_position)
         popout.show()
+
         def _nullify_annotation_table_objs():
             self.annotation_table = None
             self.annotation_table_popout = None
 
             popout.destroyed.connect(lambda: _nullify_annotation_table_objs())
+
         self.annotation_table_popout = popout
 
     def update_obs_mapping(self) -> None:
@@ -367,7 +368,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
     def import_csv_metadata(self, label_name: str) -> None:
         """Import multiple metadata columns from a .csv file using `label_name`
         as the index."""
-        file_path , _ = QFileDialog.getOpenFileName(
+        file_path, _ = QFileDialog.getOpenFileName(
             None,
             "Select a .csv file",
             "",
@@ -375,7 +376,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         )
         if not file_path:
             return
-        
+
         try:
             csv_df = pd.read_csv(file_path)
             csv_df = csv_df.fillna("None")
@@ -386,10 +387,10 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
                 except ValueError:
                     csv_df[col] = csv_df[col].astype("category")
 
-        except Exception as e:
+        except FileNotFoundError as e:
             loguru.logger.error(f"Error reading csv: {e}")
             return
-        
+
         # Check if tma_labels is in csv_df
         if label_name not in csv_df.columns:
             message = f"Column {label_name} not found in csv"
@@ -401,36 +402,41 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             )
             loguru.logger.error(message)
             return
-        
+
         else:
             labels = sorted(self.adata.obs[label_name].unique())
-            tbl = pd.DataFrame({
-                label_name: labels,
-            })
+            tbl = pd.DataFrame(
+                {
+                    label_name: labels,
+                }
+            )
             # MErge on tma_labels
             csv_df = csv_df.merge(tbl, how="left", on=label_name)
-    
+
             if self.annotation_table:
                 self.annotation_table_popout.layout().removeWidget(
-                    self.annotation_table.native)
+                    self.annotation_table.native
+                )
             # Now display the csv in a table widget
             self.annotation_table = EditableTable(
-                csv_df.to_dict(orient="list"), name="CSV Metadata")
+                csv_df.to_dict(orient="list"), name="CSV Metadata"
+            )
 
             # Add the CSV table to the popout window
             self.annotation_table_popout.layout().addWidget(
-                self.annotation_table.native)
-            
+                self.annotation_table.native
+            )
+
             # Then add a confirm widget
             def _csv_obs_mapping():
                 self.adata.obs = self.adata.obs.merge(
-                    csv_df, on=label_name, how="right")
-                
+                    csv_df, on=label_name, how="right"
+                )
+
                 self.update_model(self.adata)
 
             confirm_button = QPushButton("Confirm")
-            confirm_button.clicked.connect(
-                lambda: _csv_obs_mapping())
+            confirm_button.clicked.connect(lambda: _csv_obs_mapping())
             self.annotation_table_popout.layout().addWidget(confirm_button)
 
     def create_parameter_widgets(self) -> None:
@@ -582,9 +588,9 @@ class AugmentationWidget(AnnDataOperatorWidget):
         )
         self.obs_label_selection.scrollable = True
         self.subset_obs_cat_button = create_widget(
-            name="Subset by obs category", 
+            name="Subset by obs category",
             widget_type="PushButton",
-            annotation=bool
+            annotation=bool,
         )
         self.subset_obs_cat_button.changed.connect(self._subset_by_obs_cat)
 
@@ -600,11 +606,11 @@ class AugmentationWidget(AnnDataOperatorWidget):
         self.reductive_aug = Container()
         self.reductive_aug.extend(
             [
-                self.var_selection, 
+                self.var_selection,
                 self.subset_var_button,
-                self.obs_selection_cat, 
-                self.obs_label_selection, 
-                self.subset_obs_cat_button 
+                self.obs_selection_cat,
+                self.obs_label_selection,
+                self.subset_obs_cat_button,
             ]
         )
 
@@ -622,7 +628,7 @@ class AugmentationWidget(AnnDataOperatorWidget):
             obs = self.adata.obs[self.obs_selection_cat.value]
             return obs.unique()
         return []
-    
+
     def get_markers(self, widget=None) -> list[str]:
         """Get the .var keys from the AnnData object."""
         if self.adata is None:
@@ -1572,6 +1578,7 @@ class ClusterAnnotatorWidget(AnnDataOperatorWidget):
         #     self.launch_annotation_table
         # )
         # self.extend([self.obs_widget, self.launch_annotation_table_button])
+
 
 class SubclusteringWidget(AnnDataOperatorWidget):
     """Widget for subclustering a subset of cells in the AnnData object based on
