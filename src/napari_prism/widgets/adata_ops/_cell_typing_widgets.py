@@ -434,6 +434,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
                 )
 
                 self.update_model(self.adata)
+                self.annotation_table_popout.close()
 
             confirm_button = QPushButton("Confirm")
             confirm_button.clicked.connect(lambda: _csv_obs_mapping())
