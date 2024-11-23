@@ -67,7 +67,7 @@ def subset_adata_by_var(adata: AnnData, var_subset: list[str]) -> AnnData:
 
 
 def subset_adata_by_obs_category(
-    adata: AnnData, obs_subset: list[str]
+    adata: AnnData, obs_key: str, obs_subset: list[str]
 ) -> AnnData:
     """Subsets an AnnData object by obs category or categories.
 
@@ -79,5 +79,5 @@ def subset_adata_by_obs_category(
         View of the subsetted AnnData object.
     """
 
-    assert all(x in adata.obs.columns for x in obs_subset)
-    return adata[adata.obs.index.isin(obs_subset)]
+    assert all(x in adata.obs[obs_key].unique() for x in obs_subset)
+    return adata[adata.obs[obs_key].isin(obs_subset)]

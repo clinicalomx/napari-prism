@@ -1,11 +1,16 @@
 import decimal
 from enum import Enum
-
+from pathlib import Path
+from threading import Lock
 import loguru
 import napari
 import numpy as np
 import pandas as pd
+from loguru import logger
 from anndata import AnnData
+from spatialdata import SpatialData
+from spatialdata.models import TableModel
+from spatialdata.models.models import Schema_t
 from magicgui.widgets import ComboBox, Container, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from napari.utils.events import EmitterGroup
@@ -40,7 +45,7 @@ from napari_prism.models.adata_ops.cell_typing._clustsearch import (
     HybridPhenographSearch,
     ScanpyClusteringSearch,
 )
-from napari_prism.models.adata_ops.cell_typing._subsetter import AnnDataNodeQT
+from napari_prism.models.adata_ops.cell_typing._tree import AnnDataNodeQT
 from napari_prism.widgets._widget_utils import (
     BaseNapariWidget,
     EditableTable,
@@ -59,11 +64,20 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
 )
 
 
-class AnnDataSubsetterWidget(BaseNapariWidget):
-    """Widget for holding a tree of anndata objects and subset.
+class AnnDataTreeWidget(BaseNapariWidget):
+    """Widget for holding and saving a tree of AnnData objects as nodes.
+    
+    Serves as the main ViewerModel class for handling SpatialData objects, and
+    organises the chosen AnnData object for analysis.
 
-    Uses QTreeWidgets for organising AnnData objects in a tree-like structure.
+    May be deprecated in the future in favor of napari-spatialdata's ViewerModel
+    (or a class that extends it).
+
+    Uses QTreeWidgets.
     """
+
+    #: Lock writing operations to a single thread
+    _write_lock = Lock()
 
     #: Default name of the new annotation made by the user in the editable table
     DEFAULT_ANNOTATION_NAME = "Annotation"
@@ -72,6 +86,7 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         self,
         viewer: "napari.viewer.Viewer",
         adata: AnnData | None = None,
+        sdata: SpatialData | None = None,
         *args,
         **kwargs,
     ) -> None:
@@ -87,6 +102,9 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
         #: In-memory anndata object.
         self.adata = adata
+
+        #: Reference to main spatial data object.
+        self.sdata = sdata
 
         #: Events for when an anndata object is created, changed, or saved.
         self.events = EmitterGroup(
@@ -107,7 +125,22 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         self.adata_tree_widget = None
         self.create_parameter_widgets()
 
-    def create_model(self, adata: AnnData, emit: bool = True) -> None:
+    def set_sdata(self, sdata: SpatialData) -> None:
+        """Set the SpatialData object for the tree widget.
+
+        Args:
+            sdata: SpatialData object.
+        """
+        self.sdata = sdata
+        if self.sdata is None and self.adata_tree_widget is not None:
+            self.adata_tree_widget.clear()
+            self.update_model(None, save=False)
+
+    def create_model(
+            self, 
+            adata: AnnData,
+            table_path: Path,
+            emit: bool = True) -> None:
         """Creates an entirely new Tree, usually by changing
         the image parent.
 
@@ -124,9 +157,70 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         if emit:
             self.events.adata_created(adata=self.adata)
 
+        self.root_path = table_path
         self.create_parameter_widgets()
 
-    def update_model(self, adata: AnnData, emit: bool = True) -> None:
+    def delete_from_disk(
+        self, sdata: SpatialData, element_name: str, overwrite: bool
+    ) -> None:
+            if (
+                element_name in sdata
+                and len(sdata.locate_element(sdata[element_name])) != 0
+            ):
+                if overwrite:
+                    with self._write_lock:
+                        logger.info(f"Overwriting {element_name}")
+                        del sdata[element_name]
+                        sdata.delete_element_from_disk(element_name)
+                else:
+                    raise OSError(
+                        f"`{element_name}` already exists. Use overwrite="
+                        "True to rewrite."
+                    )
+
+    def overwrite_element(
+        self, sdata: SpatialData, element: Schema_t, element_name: str
+    ) -> None:
+        """Overwrite an element in the SpatialData object with a new element.
+        If the element already exists, it will be replaced.
+
+        Args:
+            sdata: The SpatialData object containing the element.
+            element: The new element to add.
+            element_name: The name of the element to add.
+        """
+
+        if sdata.is_backed():
+            self.delete_from_disk(sdata, element_name, overwrite=True)
+        sdata[element_name] = element
+        sdata.write_element(element_name, overwrite=True)
+
+    def save_table(
+        self,
+        table: AnnData | pd.DataFrame,
+        table_name: str,
+        write_element: bool = True,
+        *args,
+        **kwargs,
+    ) -> None:
+        """Adds a table to the contained SpatialData.
+
+        Args:
+            table: The table to add.
+            table_name: Name of the table.
+            write_element: Whether to write the element to disk.
+            *args: Passed to TableModel.parse.
+            **kwargs: Passed to TableModel.parse.
+        """
+        if isinstance(table, pd.DataFrame):
+            table = AnnData(obs=table)
+
+        table = TableModel.parse(table, *args, **kwargs)
+
+        if write_element:
+            self.overwrite_element(self.sdata, table, table_name)
+
+    def update_model(self, adata: AnnData, save: bool = True) -> None:
         """Update the selected AnnData node in the tree widget. Broadcasts this
         new AnnData object to all listeners.
 
@@ -136,9 +230,19 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
                 True.
         """
         self.adata = adata
+
+        # Save
         current_node = self.adata_tree_widget.currentItem()
-        current_node.set_adata(adata)
-        if emit:
+        if current_node is not None:
+            current_node.set_adata(adata)
+
+            if save:
+                self.save_table(
+                    current_node.adata,
+                    current_node.store.stem,
+                    write_element=True,
+                )
+
             self.events.adata_changed(adata=self.adata)
 
     def refresh_node_labels(self) -> None:
@@ -152,30 +256,105 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         """
         raise NotImplementedError("Not yet implemented")
 
-    def add_anndata_node(self, adata: AnnData) -> None:
-        """Add an anndata node to the currently selected node in the tree
-        widget.
+    def add_root_node(self, adata: AnnData, table_path: Path) -> None:
+        """Add an anndata node as the root node to the tree widget.
 
         Args:
             adata: Anndata object.
         """
-        adata_node = AnnDataNodeQT(adata, None, "Root", self.adata_tree_widget)
+        adata_node = AnnDataNodeQT(
+            adata, None, "Root", self.adata_tree_widget, store=table_path)
+
         for column in range(self.adata_tree_widget.columnCount()):
             self.adata_tree_widget.resizeColumnToContents(column)
 
         self.adata_tree_widget.setCurrentItem(adata_node)
 
-        self.adata_tree_widget.currentItemChanged.connect(
-            lambda x: self.update_model(x.adata)
+        def on_tree_item_changed(item):
+            if item and hasattr(item, "adata"):
+                self.update_model(item.adata, save=False)
+
+        self.adata_tree_widget.currentItemChanged.connect(on_tree_item_changed)
+
+        # Now we check if we have existing tables that used to be its children
+        # from a previous run
+        self.add_child_nodes_to_current(
+            adata_node.adata, self.adata_tree_widget.currentItem())
+
+    def add_child_nodes_to_current(
+        self, 
+        adata: AnnData,
+        parent_node: AnnDataNodeQT) -> None:
+        """Add all child nodes to the currently selected node in the tree widget
+        by reading tree structure from .uns["tree_attrs"].
+
+        Args:
+            adata: Anndata object.
+        """
+        children = (
+            adata.uns
+                .get("tree_attrs", {})
+                .get("children", [])
         )
+        if children != []:
+            for child in children:
+                element_name = child.store.stem
+                assert element_name in self.sdata
+                child_adata = self.sdata.tables[element_name]
+
+                node = AnnDataNodeQT(
+                    child_adata,
+                    None,
+                    child_adata.uns["tree_attrs"]["name"],
+                    parent=parent_node,
+                )
+
+                self.add_child_nodes_to_current(node.adata, node)
+
+    def add_node_to_current(
+        self, 
+        adata_slice, 
+        node_label, 
+        obs_labels=None,
+        save=True,
+        append_child_attr=True):
+        """Add a new node to the currently selected node in the tree widget. If
+        the new node label already exists, it will not be added.
+        """
+        matches = self.adata_tree_widget.findItems(
+            node_label, Qt.MatchRecursive, 0
+        )
+
+        if matches == []:
+            # Bidirectional inheritance;
+
+            # Child knows its parent
+            node = AnnDataNodeQT(
+                adata_slice,
+                obs_labels,
+                node_label,
+                parent=self.adata_tree_widget.currentItem(),
+            )
+            # Parent knows its child through .uns
+            if append_child_attr:
+                #self.adata_tree_widget.currentItem().add_child_store(node)
+                adata = self.adata_tree_widget.currentItem().adata
+                adata.uns["tree_attrs"]["children"].append(str(node.store))
+                self.update_model(adata)
+
+            if save:
+                self.save_table(
+                    node.adata,
+                    str(node.store.stem),
+                    write_element=True,
+                )
+            self.adata_tree_widget.expandAll()
 
     def show_context_menu(self, pos: QPoint) -> None:
         """Show the context menu at the user cursor when right-clicking on a
         node in the tree.
 
         Context menu options:
-            - Save: Save the current node to the viewer.
-            - Rename: Rename the node name.
             - Annotate Obs: Launch the table annotation widget. TODO
             - Delete: Delete the current node. Option only available if the
                 node is not the root node.
@@ -187,10 +366,6 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
         if item:
             context_menu = QMenu()
-            # save action
-            save_action = QAction("Save", self.native)
-            save_action.triggered.connect(lambda: self.save_current_node())
-            context_menu.addAction(save_action)
 
             # annotate action
             annotate_action = QAction("Annotate Obs", self.native)
@@ -205,51 +380,14 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
             context_menu.exec_(self.adata_tree_widget.mapToGlobal(pos))
 
-    def save_current_node(self) -> None:
-        """Call to save the current AnnData node directly to the underlying
-        on-disk SpatialData object. Handled by the `AnnDataAnalsisParentWidget`.
-        """
-        current_node = self.adata_tree_widget.currentItem()
-        current_node.inherit_children_obs()
-        adata_out = current_node.adata
-        self.events.adata_saved(adata=adata_out)
-
-    def rename_node(self, node: AnnDataNodeQT) -> None:
-        """Renames the text of the node. If the new name already exists within
-        the tree, the operation is cancelled."""
-
-        def _is_name_unique(new_name):
-            for index in range(self.adata_tree_widget.topLevelItemCount()):
-                item = self.adata_tree_widget.topLevelItem(index)
-                if item.text(0) == new_name:
-                    return False
-            return True
-
-        def _show_warning(title: str, message: str) -> None:
-            """Show a warning dialog if the name already exists."""
-            msg = QMessageBox(self.native)
-            msg.setIcon(QMessageBox.Warning)
-            msg.setText(message)
-            msg.setWindowTitle(title)
-            msg.exec_()
-
-        old_name = node.text(0)
-        new_name, ok = QInputDialog.getText(
-            self.native, "Rename Node", "Enter new name:", text=old_name
-        )
-
-        if ok and new_name.strip():
-            new_name = new_name.strip()
-
-            # Check if the new name already exists in the tree
-            if _is_name_unique(new_name):
-                node.setText(0, new_name)
-            else:
-                # Show a warning if the name is already taken
-                _show_warning(
-                    "Name already exists",
-                    "The name you entered already exists in the tree.",
-                )
+    # def save_current_node(self) -> None:
+    #     """Call to save the current AnnData node directly to the underlying
+    #     on-disk SpatialData object. Handled by the `AnnDataAnalsisParentWidget`.
+    #     """
+    #     current_node = self.adata_tree_widget.currentItem()
+    #     current_node.inherit_children_obs()
+    #     adata_out = current_node.adata
+    #     self.events.adata_saved(adata=adata_out)
 
     def delete_node(self, node: AnnDataNodeQT) -> None:
         """Deletes the current AnnData node and its children from the tree
@@ -257,11 +395,22 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         """
         parent = node.parent()
         if parent:
+            # collect node children
+            to_delete = node.collect_all_children() + [node]
+            if self.sdata.is_backed():
+                for node in to_delete:
+                    self.delete_from_disk(
+                        self.sdata, node.store.stem, overwrite=True)
+                    parent.adata.uns["tree_attrs"]["children"].remove(
+                        str(node.store)
+                    )
             parent.removeChild(node)
-        else:
-            self.adata_tree_widget.takeTopLevelItem(
-                self.adata_tree_widget.indexOfTopLevelItem(node)
-            )
+            self.save_table(
+                parent.adata, parent.store.stem, write_element=True)
+        # else:
+        #     self.adata_tree_widget.takeTopLevelItem(
+        #         self.adata_tree_widget.indexOfTopLevelItem(node)
+        #     )
 
     def get_categorical_obs_keys(self, widget=None) -> list[str]:
         """Get the .obs keys from the AnnData object that are categorical."""
@@ -323,9 +472,12 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
             annotation_table = EditableTable(tbl, name="Annotation Table")
             annotation_table.changed.connect(self.update_obs_mapping)
             self.annotation_table = annotation_table
+            confirm_button = QPushButton("Confirm")
+            confirm_button.clicked.connect(lambda: self.update_obs_mapping())
 
             # non-blocking pop out table
             layout.addWidget(annotation_table.native)
+            layout.addWidget(confirm_button)
 
         cursor_position = QCursor.pos()
         popout.move(cursor_position)
@@ -367,7 +519,6 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
         try:
             csv_df = pd.read_csv(file_path)
-            csv_df = csv_df.fillna("None")
             # Parse dtypes
             for col in csv_df.columns:
                 try:
@@ -429,7 +580,8 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         an anndata object is available.
         """
         self.adata_tree_widget = QTreeWidget()
-        self.adata_tree_widget.itemChanged.connect(self.validate_node_name)
+        self.adata_tree_widget.itemChanged.connect(
+            self.validate_node_name)
         self.adata_tree_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.adata_tree_widget.customContextMenuRequested.connect(
             self.show_context_menu
@@ -441,9 +593,11 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
         self.adata_tree_widget.setHeaderLabels(HEADERS)
 
         if self.adata is not None:
-            self.add_anndata_node(self.adata)
+            self.add_root_node(self.adata, self.root_path)
 
     def validate_node_name(self, node: AnnDataNodeQT, column: int) -> None:
+        """Rename node function. Validates before setting the node name when
+        the user double clicks the node name."""
         if column != 0:
             return
 
@@ -455,6 +609,10 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
         new_name = node.text(0).strip()
 
+        if new_name == "Root":
+            node.setText(0, old_name)
+            return
+        
         if not new_name:
             new_name = old_name
 
@@ -478,26 +636,18 @@ class AnnDataSubsetterWidget(BaseNapariWidget):
 
         if is_unique:
             node.setData(0, Qt.UserRole, new_name)
+            if node.store.exists():
+                new_table_name = node.parent().store.stem + "_" + new_name
+                new_store = Path(
+                    node.store.parent, # tables 
+                    new_table_name
+                    )
+                # Will rename the store/folder on disk, and set the node store to
+                # that renamed store/folder
+                node.store = node.store.rename(new_store) 
+
         else:
             node.setText(0, old_name)
-
-    def add_node_to_current(self, adata_slice, node_label, obs_labels=None):
-        """Add a new node to the currently selected node in the tree widget. If
-        the new node label already exists, it will not be added.
-        """
-        matches = self.adata_tree_widget.findItems(
-            node_label, Qt.MatchRecursive, 0
-        )
-
-        if matches == []:
-            # TODO: allow overwrite ?
-            AnnDataNodeQT(
-                adata_slice,
-                obs_labels,
-                node_label,
-                parent=self.adata_tree_widget.currentItem(),
-            )
-
 
 class AugmentationWidget(AnnDataOperatorWidget):
     """Widget for augmenting (adding vars, subsetting by vars) AnnData objects."""
@@ -555,30 +705,6 @@ class AugmentationWidget(AnnDataOperatorWidget):
         )
         self.subset_var_button.changed.connect(self._subset_by_var)
 
-        self.obs_selection_cat = ComboBox(
-            name="ObsKeys",
-            choices=self.get_categorical_obs_keys,
-            label="Select cat. obs keys to subset by",
-            value=None,
-            nullable=True,
-        )
-        self.obs_selection_cat.scrollable = True
-        self.obs_selection_cat.changed.connect(self.reset_choices)
-        self.obs_label_selection = Select(
-            name="ObsCategories",
-            choices=self.get_obs_categories,
-            label="Select categories to include in subset",
-            value=None,
-            nullable=True,
-        )
-        self.obs_label_selection.scrollable = True
-        self.subset_obs_cat_button = create_widget(
-            name="Subset by obs category",
-            widget_type="PushButton",
-            annotation=bool,
-        )
-        self.subset_obs_cat_button.changed.connect(self._subset_by_obs_cat)
-
         self.additive_aug = Container()
         self.additive_aug.extend(
             [
@@ -593,9 +719,6 @@ class AugmentationWidget(AnnDataOperatorWidget):
             [
                 self.var_selection,
                 self.subset_var_button,
-                self.obs_selection_cat,
-                self.obs_label_selection,
-                self.subset_obs_cat_button,
             ]
         )
 
@@ -606,13 +729,6 @@ class AugmentationWidget(AnnDataOperatorWidget):
         self.augmentation_tabs.addTab(
             self.reductive_aug.native, "Reductive Augmentation"
         )
-
-    def get_obs_categories(self, widget=None) -> list[str]:
-        """Get the available categories from the selected .obs key."""
-        if self.obs_selection_cat.value is not None:
-            obs = self.adata.obs[self.obs_selection_cat.value]
-            return obs.unique()
-        return []
 
     def get_markers(self, widget=None) -> list[str]:
         """Get the .var keys from the AnnData object."""
@@ -632,16 +748,6 @@ class AugmentationWidget(AnnDataOperatorWidget):
             node_label = "subset" + "_".join(var_keys)
             self.events.augment_created(adata=aug_adata, label=node_label)
 
-    def _subset_by_obs_cat(self) -> None:
-        obs_keys = self.obs_selection_cat.value
-        obs_labels = self.obs_label_selection.value
-        if obs_keys is not None and obs_labels != []:
-            aug_adata = subset_adata_by_obs_category(
-                self.adata, obs_keys, obs_labels
-            )
-            node_label = f"subset_{obs_keys}_{'_'.join(obs_labels)}"
-            self.events.augment_created(adata=aug_adata, label=node_label)
-
     def _add_obs_as_var(self) -> None:
         """Create a new AnnData object with the selected obs keys added as
         features. Add this as a new child node labelled by the obs keys
@@ -654,13 +760,6 @@ class AugmentationWidget(AnnDataOperatorWidget):
             aug_adata = add_obs_as_var(self.adata, obs_keys, layer_key)
             node_label += f"_{'_'.join(obs_keys)}"
             self.events.augment_created(adata=aug_adata, label=node_label)
-
-    def get_obs_keys(self, widget=None) -> list[str]:
-        """Get the .obs keys from the AnnData object."""
-        if self.adata is None:
-            return []
-        else:
-            return list(self.adata.obs.columns)
 
 
 class QCWidget(AnnDataOperatorWidget):
@@ -1593,7 +1692,7 @@ class SubclusteringWidget(AnnDataOperatorWidget):
         self.obs_selection.scrollable = True
         self.obs_selection.changed.connect(self.reset_choices)
 
-        self.obs_label_selection = ComboBox(
+        self.obs_label_selection = Select(
             name="ObsCategories",
             choices=self.get_obs_categories,
             label="Select a category to subcluster",
@@ -1601,15 +1700,6 @@ class SubclusteringWidget(AnnDataOperatorWidget):
             nullable=True,
         )
         self.obs_label_selection.scrollable = True
-
-        self.var_selection = Select(
-            name="VarKeys",
-            choices=self.get_markers,
-            label="Select a marker to visualise",
-            value=None,
-            nullable=True,
-        )
-        self.var_selection.scrollable = True
 
         self.subcluster_button = create_widget(
             name="Subcluster", widget_type="PushButton", annotation=bool
@@ -1620,37 +1710,24 @@ class SubclusteringWidget(AnnDataOperatorWidget):
             [
                 self.obs_selection,
                 self.obs_label_selection,
-                self.var_selection,
                 self.subcluster_button,
             ]
         )
 
     def subcluster(self) -> None:
-        """Subcluster the selected category in the selected .obs key. If a
-        .var key(s) is selected, then further subset the subcluster to the
-        selected .var key(s).
+        """Subcluster the selected category in the selected .obs key.
 
         Emits the new subcluster to any listener(s), labelled by selected obs
-        category, with the selected .var(s) if any.
+        category.
         """
-        adata_subset = self.adata.copy()
-        label = None
-        var_suffix = ""
-        # Query by obs
-        if self.obs_selection.value is not None:
-            obs = self.obs_selection.value
-            label = self.obs_label_selection.value
-            adata_subset = adata_subset[adata_subset.obs[obs] == label].copy()
-
-        # Query by var
-        if self.var_selection.value is not None:
-            adata_subset = adata_subset[:, self.var_selection.value].copy()
-            var_suffix = "_truncated_markers"
-
-        # Add to tree
-        node_label = label if label is not None else obs + var_suffix
-
-        self.events.subcluster_created(adata=adata_subset, label=node_label)
+        obs_keys = self.obs_selection.value
+        obs_labels = self.obs_label_selection.value
+        if obs_keys is not None and obs_labels != []:
+            aug_adata = subset_adata_by_obs_category(
+                self.adata, obs_keys, obs_labels
+            )
+            node_label = f"subset_{obs_keys}_{'_'.join(obs_labels)}"
+            self.events.subcluster_created(adata=aug_adata, label=node_label)
 
     def get_obs_categories(self, widget=None) -> list[str]:
         """Get the available categories from the selected .obs key."""

@@ -33,7 +33,7 @@ class AnnDataOperatorWidget(BaseNapariWidget):
         Args:
             viewer: Napari viewer.
             adata: Anndata object. Usually a memory reference to the
-                `AnnDataSubsetterWidget` AnnData object.
+                `AnnDataTreeWidget` AnnData object.
             sdata: SpatialData object.
             *args: Passed to magicgui Container init.
             **kwargs: Passed to magicgui Container init.

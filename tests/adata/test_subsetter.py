@@ -1,4 +1,4 @@
-"""Tests the subsetter module, or the used QT AnnData Trees"""
+"""Tests the tree module, or the used QT AnnData Trees"""
 
 import logging
 from typing import Any

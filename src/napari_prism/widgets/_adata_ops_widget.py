@@ -2,14 +2,14 @@ import napari
 from magicgui.widgets import ComboBox
 from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTableWidget, QTabWidget, QVBoxLayout, QWidget
-
+from pathlib import Path
 from napari_prism.widgets._widget_utils import (
     get_selected_layer,
     make_unique_sdata_element_name,
 )
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._cell_typing_widgets import (
-    AnnDataSubsetterWidget,
+    AnnDataTreeWidget,
     AugmentationWidget,
     ClusterAnnotatorWidget,
     ClusterAssessmentWidget,
@@ -27,15 +27,15 @@ from napari_prism.widgets.adata_ops._spatial_analysis_widgets import (
 class CellTypingTab(QTabWidget):
     """UI tabs."""
 
-    def __init__(self, viewer: "napari.viewer.Viewer", adata, subsetter):
+    def __init__(self, viewer: "napari.viewer.Viewer", adata, tree):
         super().__init__()
         self.viewer = viewer
-        self.subsetter = subsetter
+        self.tree = tree
 
         self.augmentation = AugmentationWidget(self.viewer, adata)
-        self.augmentation.max_height = 400
+        self.augmentation.max_height = 900
         self.augmentation.events.augment_created.connect(
-            lambda x: self.subsetter.add_node_to_current(
+            lambda x: self.tree.add_node_to_current(
                 x.adata, node_label=x.label
             )
         )
@@ -44,33 +44,33 @@ class CellTypingTab(QTabWidget):
         self.preprocessor = PreprocessingWidget(self.viewer, adata)
         self.preprocessor.max_height = 900
         self.preprocessor.events.augment_created.connect(
-            lambda x: self.subsetter.add_node_to_current(
+            lambda x: self.tree.add_node_to_current(
                 x.adata, node_label=x.label
             )
         )
         self.preprocessor.events.adata_changed.connect(
-            lambda x: self.subsetter.update_model(x.adata)
+            lambda x: self.tree.update_model(x.adata)
         )
         self.addTab(self.preprocessor.native, "Preprocessing")
 
         self.clustering_searcher = ClusterSearchWidget(self.viewer, adata)
         self.clustering_searcher.max_height = 400
         self.clustering_searcher.events.adata_changed.connect(
-            lambda x: self.subsetter.update_model(x.adata)
+            lambda x: self.tree.update_model(x.adata)
         )
         self.addTab(self.clustering_searcher.native, "Clustering Search")
 
         self.cluster_assessment = ClusterAssessmentWidget(self.viewer, adata)
-        self.cluster_assessment.max_height = 700
+        self.cluster_assessment.max_height = 900
         self.cluster_assessment.events.adata_changed.connect(
-            lambda x: self.subsetter.update_model(x.adata)
+            lambda x: self.tree.update_model(x.adata)
         )
         self.addTab(self.cluster_assessment.native, "Assess Cluster Runs")
 
         self.cluster_annotator = ClusterAnnotatorWidget(self.viewer, adata)
         self.cluster_annotator.max_height = 900
         self.cluster_annotator.events.adata_changed.connect(
-            lambda x: self.subsetter.update_model(x.adata)
+            lambda x: self.tree.update_model(x.adata)
         )
         self.addTab(self.cluster_annotator.native, "Visualise Clusters")
 
@@ -78,7 +78,7 @@ class CellTypingTab(QTabWidget):
         self.subclusterer = SubclusteringWidget(self.viewer, adata)
         self.subclusterer.max_height = 700
         self.subclusterer.events.subcluster_created.connect(
-            lambda x: self.subsetter.add_node_to_current(
+            lambda x: self.tree.add_node_to_current(
                 x.adata, node_label=x.label
             )
         )
@@ -88,38 +88,38 @@ class CellTypingTab(QTabWidget):
 class SpatialAnalysisTab(QTabWidget):
     """Spatial Analysis classes; 1) Squidpy Wrapper, 2) General Wrapper"""
 
-    def __init__(self, viewer: "napari.viewer.Viewer", adata, subsetter):
+    def __init__(self, viewer: "napari.viewer.Viewer", adata, tree):
         super().__init__()
         self.viewer = viewer
-        self.subsetter = subsetter
+        self.tree = tree
 
         self.graph_builder = GraphBuilderWidget(self.viewer, adata)
         self.graph_builder.max_height = 400
         self.graph_builder.events.adata_changed.connect(
-            lambda x: self.subsetter.update_model(x.adata)
+            lambda x: self.tree.update_model(x.adata)
         )
         self.addTab(self.graph_builder.native, "Build Graph")
 
         self.nolan_cn = NolanWidget(self.viewer, adata)
         self.nolan_cn.max_height = 400
         self.nolan_cn.events.adata_changed.connect(
-            lambda x: self.subsetter.update_model(x.adata)
+            lambda x: self.tree.update_model(x.adata)
         )
         self.addTab(self.nolan_cn, "Cellular Neighborhoods")
 
         self.proximity_density = ProximityDensityWidget(self.viewer, adata)
         self.proximity_density.max_height = 400
         self.proximity_density.events.adata_changed.connect(
-            lambda x: self.subsetter.update_model(x.adata)
+            lambda x: self.tree.update_model(x.adata)
         )
         self.addTab(self.proximity_density, "Proximity Density")
 
 
 class FeatureModellingTab(QTableWidget):
-    def __init__(self, viewer: "napari.viewer.Viewer", adata, subsetter):
+    def __init__(self, viewer: "napari.viewer.Viewer", adata, tree):
         super().__init__()
         self.viewer = viewer
-        self.subsetter = subsetter
+        self.tree = tree
 
 
 class AnnDataAnalysisParentWidget(QWidget):
@@ -152,9 +152,10 @@ class AnnDataAnalysisParentWidget(QWidget):
         )
 
         self.events.meta_sdata_changed.connect(self.refresh_adata_choices)
-        self.events.meta_sdata_changed.connect(
-            lambda x: AnnDataOperatorWidget.update_sdata_all_operators(x.sdata)
-        )
+       
+        # self.events.meta_sdata_changed.connect(
+        #     lambda x: AnnDataOperatorWidget.update_sdata_all_operators(x.sdata)
+        # )
 
         self.layout = QVBoxLayout()
 
@@ -169,41 +170,47 @@ class AnnDataAnalysisParentWidget(QWidget):
 
         # Parent Data Manager; Hold the memory reference to adatas in this class
         # On creation, empty
-        self.subsetter = AnnDataSubsetterWidget(self.viewer, None)
-        self.subsetter.min_height = 120
-        self.subsetter.max_height = 500
-        self.layout.addWidget(self.subsetter.native)
+        self.tree = AnnDataTreeWidget(
+            self.viewer, self.meta_adata, self.meta_sdata)
+        self.tree.min_height = 120
+        self.tree.max_height = 500
+        self.layout.addWidget(self.tree.native)
+
+        self.events.meta_sdata_changed.connect(
+            lambda x: self.tree.set_sdata(x.sdata)
+        )
         # When the hotspot changes; update the tree
         self.events.meta_adata_changed.connect(
-            lambda x: self.subsetter.create_model(x.adata)
+            lambda x: self.tree.create_model(
+                adata=x.adata, table_path=x.table_path)
         )  # Create new tree
 
         # When adata changes, update all operators
-        self.subsetter.events.adata_created.connect(
+        self.tree.events.adata_created.connect(
             lambda x: AnnDataOperatorWidget.create_model_all_operators(x.adata)
         )
 
-        self.subsetter.events.adata_changed.connect(
+        self.tree.events.adata_changed.connect(
             lambda x: AnnDataOperatorWidget.update_model_all_operators(x.adata)
         )
 
-        self.subsetter.events.adata_saved.connect(
+        self.tree.events.adata_saved.connect(
             lambda x: self.save_adata_to_sdata(x.adata)
         )
 
         # Hotdesk Adata
-        adata = self.subsetter.adata
+        adata = self.tree.adata
 
         self.tabs = QTabWidget()
 
-        self.cell_typing_tab = CellTypingTab(viewer, adata, self.subsetter)
+        self.cell_typing_tab = CellTypingTab(viewer, adata, self.tree)
 
         self.spatial_analysis_tab = SpatialAnalysisTab(
-            viewer, adata, self.subsetter
+            viewer, adata, self.tree
         )
 
         self.feature_modelling_tab = FeatureModellingTab(
-            viewer, adata, self.subsetter
+            viewer, adata, self.tree
         )
 
         self.tabs.addTab(self.cell_typing_tab, "Cell Typing")
@@ -297,7 +304,10 @@ class AnnDataAnalysisParentWidget(QWidget):
     def update_adata_model(self):
         selection = self._adata_selection.value
         self.meta_adata = self.meta_sdata[selection]
-        self.events.meta_adata_changed(adata=self.meta_adata)
+        table_path = Path(self.meta_sdata.path, "tables", selection)
+        self.events.meta_adata_changed(
+            adata=self.meta_adata,
+            table_path=table_path)
 
     def refresh_adata_choices(self):
         self._adata_selection.reset_choices()
@@ -309,7 +319,7 @@ class AnnDataAnalysisParentWidget(QWidget):
 
     def save_adata_to_sdata(self, new_adata):
         selection = self._adata_selection.value
-        node_name = self.subsetter.adata_tree_widget.currentItem().text(0)
+        node_name = self.tree.adata_tree_widget.currentItem().text(0)
         if node_name == "Root":
             save_name = f"{selection}_new"
         else:

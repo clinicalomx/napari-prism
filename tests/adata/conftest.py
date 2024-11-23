@@ -5,7 +5,7 @@ import scanpy as sc
 from anndata import AnnData
 from qtpy.QtWidgets import QTreeWidget
 
-from napari_prism.models.adata_ops.cell_typing._subsetter import AnnDataNodeQT
+from napari_prism.models.adata_ops.cell_typing._tree import AnnDataNodeQT
 
 
 @pytest.fixture
