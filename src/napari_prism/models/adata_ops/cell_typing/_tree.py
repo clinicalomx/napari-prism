@@ -25,7 +25,10 @@ class AnnDataNodeQT(QTreeWidgetItem):
         if store is not None:
             self.store = store  # Path?
         else:
-            self.store = Path(str(parent.store) + "_" + name)
+            if isinstance(parent, AnnDataNodeQT):
+                self.store = Path(str(parent.store) + "_" + name)
+            else:
+                self.store = None
 
         super(QTreeWidgetItem, self).__init__(parent)
         if name != "Root":
