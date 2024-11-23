@@ -1,14 +1,16 @@
 from __future__ import annotations
+
 import logging
 import re
-import pandas as pd
-from anndata import AnnData
 from pathlib import Path
+
+import pandas as pd
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QLabel,
     QTreeWidgetItem,
 )
+
 
 # QTree Versions
 class AnnDataNodeQT(QTreeWidgetItem):
@@ -21,7 +23,7 @@ class AnnDataNodeQT(QTreeWidgetItem):
         """
         #: Before init to check valid store when validating node names
         if store is not None:
-            self.store = store # Path?
+            self.store = store  # Path?
         else:
             self.store = Path(str(parent.store) + "_" + name)
 
@@ -42,21 +44,17 @@ class AnnDataNodeQT(QTreeWidgetItem):
 
         # Set parent in uns
         if isinstance(parent, AnnDataNodeQT):
-            adata.uns["tree_attrs"] = {
-                "parent": str(parent.store)
-            }
+            adata.uns["tree_attrs"] = {"parent": str(parent.store)}
         else:
             # Root node
-            adata.uns["tree_attrs"] = {
-                "parent": str(store)
-            }
+            adata.uns["tree_attrs"] = {"parent": str(store)}
 
         # And Label shown in widget
         adata.uns["tree_attrs"]["name"] = name
 
         # Empty child list
         adata.uns["tree_attrs"]["children"] = []
-        
+
         self.set_adata(adata)
 
     def __repr__(self):
@@ -108,7 +106,7 @@ class AnnDataNodeQT(QTreeWidgetItem):
         for n in range(n_children):
             collection.append(self.child(n))
         return collection
-    
+
     def collect_all_children(self):
         """Collects all child objects"""
         collection = []

@@ -2,15 +2,13 @@ import decimal
 from enum import Enum
 from pathlib import Path
 from threading import Lock
+
 import loguru
 import napari
 import numpy as np
 import pandas as pd
-from loguru import logger
 from anndata import AnnData
-from spatialdata import SpatialData
-from spatialdata.models import TableModel
-from spatialdata.models.models import Schema_t
+from loguru import logger
 from magicgui.widgets import ComboBox, Container, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from napari.utils.events import EmitterGroup
@@ -20,7 +18,6 @@ from qtpy.QtWidgets import (
     QAction,
     QFileDialog,
     QHBoxLayout,
-    QInputDialog,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -29,6 +26,9 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from spatialdata import SpatialData
+from spatialdata.models import TableModel
+from spatialdata.models.models import Schema_t
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
@@ -66,7 +66,7 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
 
 class AnnDataTreeWidget(BaseNapariWidget):
     """Widget for holding and saving a tree of AnnData objects as nodes.
-    
+
     Serves as the main ViewerModel class for handling SpatialData objects, and
     organises the chosen AnnData object for analysis.
 
@@ -137,10 +137,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
             self.update_model(None, save=False)
 
     def create_model(
-            self, 
-            adata: AnnData,
-            table_path: Path,
-            emit: bool = True) -> None:
+        self, adata: AnnData, table_path: Path, emit: bool = True
+    ) -> None:
         """Creates an entirely new Tree, usually by changing
         the image parent.
 
@@ -163,20 +161,20 @@ class AnnDataTreeWidget(BaseNapariWidget):
     def delete_from_disk(
         self, sdata: SpatialData, element_name: str, overwrite: bool
     ) -> None:
-            if (
-                element_name in sdata
-                and len(sdata.locate_element(sdata[element_name])) != 0
-            ):
-                if overwrite:
-                    with self._write_lock:
-                        logger.info(f"Overwriting {element_name}")
-                        del sdata[element_name]
-                        sdata.delete_element_from_disk(element_name)
-                else:
-                    raise OSError(
-                        f"`{element_name}` already exists. Use overwrite="
-                        "True to rewrite."
-                    )
+        if (
+            element_name in sdata
+            and len(sdata.locate_element(sdata[element_name])) != 0
+        ):
+            if overwrite:
+                with self._write_lock:
+                    logger.info(f"Overwriting {element_name}")
+                    del sdata[element_name]
+                    sdata.delete_element_from_disk(element_name)
+            else:
+                raise OSError(
+                    f"`{element_name}` already exists. Use overwrite="
+                    "True to rewrite."
+                )
 
     def overwrite_element(
         self, sdata: SpatialData, element: Schema_t, element_name: str
@@ -263,7 +261,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
             adata: Anndata object.
         """
         adata_node = AnnDataNodeQT(
-            adata, None, "Root", self.adata_tree_widget, store=table_path)
+            adata, None, "Root", self.adata_tree_widget, store=table_path
+        )
 
         for column in range(self.adata_tree_widget.columnCount()):
             self.adata_tree_widget.resizeColumnToContents(column)
@@ -279,23 +278,19 @@ class AnnDataTreeWidget(BaseNapariWidget):
         # Now we check if we have existing tables that used to be its children
         # from a previous run
         self.add_child_nodes_to_current(
-            adata_node.adata, self.adata_tree_widget.currentItem())
+            adata_node.adata, self.adata_tree_widget.currentItem()
+        )
 
     def add_child_nodes_to_current(
-        self, 
-        adata: AnnData,
-        parent_node: AnnDataNodeQT) -> None:
+        self, adata: AnnData, parent_node: AnnDataNodeQT
+    ) -> None:
         """Add all child nodes to the currently selected node in the tree widget
         by reading tree structure from .uns["tree_attrs"].
 
         Args:
             adata: Anndata object.
         """
-        children = (
-            adata.uns
-                .get("tree_attrs", {})
-                .get("children", [])
-        )
+        children = adata.uns.get("tree_attrs", {}).get("children", [])
         if children != []:
             for child in children:
                 element_name = child.store.stem
@@ -312,12 +307,13 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 self.add_child_nodes_to_current(node.adata, node)
 
     def add_node_to_current(
-        self, 
-        adata_slice, 
-        node_label, 
+        self,
+        adata_slice,
+        node_label,
         obs_labels=None,
         save=True,
-        append_child_attr=True):
+        append_child_attr=True,
+    ):
         """Add a new node to the currently selected node in the tree widget. If
         the new node label already exists, it will not be added.
         """
@@ -337,7 +333,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
             )
             # Parent knows its child through .uns
             if append_child_attr:
-                #self.adata_tree_widget.currentItem().add_child_store(node)
+                # self.adata_tree_widget.currentItem().add_child_store(node)
                 adata = self.adata_tree_widget.currentItem().adata
                 adata.uns["tree_attrs"]["children"].append(str(node.store))
                 self.update_model(adata)
@@ -400,13 +396,15 @@ class AnnDataTreeWidget(BaseNapariWidget):
             if self.sdata.is_backed():
                 for node in to_delete:
                     self.delete_from_disk(
-                        self.sdata, node.store.stem, overwrite=True)
+                        self.sdata, node.store.stem, overwrite=True
+                    )
                     parent.adata.uns["tree_attrs"]["children"].remove(
                         str(node.store)
                     )
             parent.removeChild(node)
             self.save_table(
-                parent.adata, parent.store.stem, write_element=True)
+                parent.adata, parent.store.stem, write_element=True
+            )
         # else:
         #     self.adata_tree_widget.takeTopLevelItem(
         #         self.adata_tree_widget.indexOfTopLevelItem(node)
@@ -580,8 +578,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         an anndata object is available.
         """
         self.adata_tree_widget = QTreeWidget()
-        self.adata_tree_widget.itemChanged.connect(
-            self.validate_node_name)
+        self.adata_tree_widget.itemChanged.connect(self.validate_node_name)
         self.adata_tree_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.adata_tree_widget.customContextMenuRequested.connect(
             self.show_context_menu
@@ -612,7 +609,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         if new_name == "Root":
             node.setText(0, old_name)
             return
-        
+
         if not new_name:
             new_name = old_name
 
@@ -639,15 +636,16 @@ class AnnDataTreeWidget(BaseNapariWidget):
             if node.store.exists():
                 new_table_name = node.parent().store.stem + "_" + new_name
                 new_store = Path(
-                    node.store.parent, # tables 
-                    new_table_name
-                    )
+                    node.store.parent,  # tables
+                    new_table_name,
+                )
                 # Will rename the store/folder on disk, and set the node store to
                 # that renamed store/folder
-                node.store = node.store.rename(new_store) 
+                node.store = node.store.rename(new_store)
 
         else:
             node.setText(0, old_name)
+
 
 class AugmentationWidget(AnnDataOperatorWidget):
     """Widget for augmenting (adding vars, subsetting by vars) AnnData objects."""

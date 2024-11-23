@@ -1,8 +1,10 @@
+from pathlib import Path
+
 import napari
 from magicgui.widgets import ComboBox
 from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTableWidget, QTabWidget, QVBoxLayout, QWidget
-from pathlib import Path
+
 from napari_prism.widgets._widget_utils import (
     get_selected_layer,
     make_unique_sdata_element_name,
@@ -152,7 +154,7 @@ class AnnDataAnalysisParentWidget(QWidget):
         )
 
         self.events.meta_sdata_changed.connect(self.refresh_adata_choices)
-       
+
         # self.events.meta_sdata_changed.connect(
         #     lambda x: AnnDataOperatorWidget.update_sdata_all_operators(x.sdata)
         # )
@@ -171,7 +173,8 @@ class AnnDataAnalysisParentWidget(QWidget):
         # Parent Data Manager; Hold the memory reference to adatas in this class
         # On creation, empty
         self.tree = AnnDataTreeWidget(
-            self.viewer, self.meta_adata, self.meta_sdata)
+            self.viewer, self.meta_adata, self.meta_sdata
+        )
         self.tree.min_height = 120
         self.tree.max_height = 500
         self.layout.addWidget(self.tree.native)
@@ -182,7 +185,8 @@ class AnnDataAnalysisParentWidget(QWidget):
         # When the hotspot changes; update the tree
         self.events.meta_adata_changed.connect(
             lambda x: self.tree.create_model(
-                adata=x.adata, table_path=x.table_path)
+                adata=x.adata, table_path=x.table_path
+            )
         )  # Create new tree
 
         # When adata changes, update all operators
@@ -306,8 +310,8 @@ class AnnDataAnalysisParentWidget(QWidget):
         self.meta_adata = self.meta_sdata[selection]
         table_path = Path(self.meta_sdata.path, "tables", selection)
         self.events.meta_adata_changed(
-            adata=self.meta_adata,
-            table_path=table_path)
+            adata=self.meta_adata, table_path=table_path
+        )
 
     def refresh_adata_choices(self):
         self._adata_selection.reset_choices()
