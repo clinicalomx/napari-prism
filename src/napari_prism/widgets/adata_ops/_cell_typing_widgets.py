@@ -298,9 +298,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 assert element_name in self.sdata
                 child_adata = self.sdata.tables[element_name]
 
-                init_attrs = (
-                    "tree_attrs" not in child_adata.uns
-                )
+                init_attrs = "tree_attrs" not in child_adata.uns
                 node = AnnDataNodeQT(
                     child_adata,
                     None,
