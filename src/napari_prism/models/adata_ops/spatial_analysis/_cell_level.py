@@ -9,7 +9,7 @@ from joblib import Parallel, delayed
 from scipy.sparse import csr_matrix
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.neighbors import NearestNeighbors
-
+from loguru import logger
 from napari_prism.models.adata_ops.spatial_analysis._utils import (
     symmetrise_graph,
 )
@@ -359,7 +359,7 @@ def cellular_neighborhoods_sq(
     # Reannotate the frequency graph; technically these can be in obsm
     total_neighbor_counts.columns.name = phenotype
     adata.obsm["neighbor_counts"] = total_neighbor_counts
-    print("Counts done")
+    logger.info("Neighbor phenotype counts done")
 
     # Below represnet distinct following step in workflow; KMeans
     kmeans_cls = MiniBatchKMeans if mini_batch_kmeans else KMeans
@@ -368,9 +368,9 @@ def cellular_neighborhoods_sq(
     labels = []
     inertias = []
     enrichment_scores = {}
-    print("Starting KMeans loop")
+    logger.info("Starting KMeans loop")
     for k in k_kmeans:
-        print(k)
+        logger.info(k)
         # Instantiate kmeans instance
         if kmeans_instance is not None:
             kmeans_instance.n_clusters = k
@@ -407,9 +407,12 @@ def cellular_neighborhoods_sq(
     adata.uns["cn_enrichment_matrices"] = enrichment_scores
     adata.uns["cn_enrichment_matrices_dims"] = {"k_kmeans": k_kmeans}
 
-    cn_labels = np.array(labels).T
+    cn_labels = pd.DataFrame(np.array(labels).T)
+    cn_labels.columns = k_kmeans
+    cn_labels.columns = cn_labels.columns.astype(str)
+    cn_labels.index = adata.obs.index
     # structured
-    cn_labels = np.array(cn_labels, dtype=[("k_kmeans", cn_labels.dtype)])
+    #cn_labels = np.array(cn_labels)#, dtype=[("k_kmeans", cn_labels.dtype)])
 
     adata.obsm["cn_labels"] = cn_labels
     adata.uns["cn_labels_dims"] = {"k_kmeans": k_kmeans}

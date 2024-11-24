@@ -2,7 +2,7 @@ from pathlib import Path
 
 import napari
 from magicgui.widgets import ComboBox
-from napari.utils.events import EmitterGroup
+from napari.utils.events import EmitterGroup, Event
 from qtpy.QtWidgets import QTableWidget, QTabWidget, QVBoxLayout, QWidget
 
 from napari_prism.widgets._widget_utils import (
@@ -80,8 +80,8 @@ class CellTypingTab(QTabWidget):
         self.subclusterer = SubclusteringWidget(self.viewer, adata)
         self.subclusterer.max_height = 700
         self.subclusterer.events.subcluster_created.connect(
-            lambda x: self.tree.add_node_to_current(
-                x.adata, node_label=x.label
+            lambda x: self.tree.add_restored_node_to_current(
+                x.adata_indices, node_label=x.label
             )
         )
         self.addTab(self.subclusterer.native, "Subclusterer")
@@ -196,9 +196,10 @@ class AnnDataAnalysisParentWidget(QWidget):
             lambda x: AnnDataOperatorWidget.update_model_all_operators(x.adata)
         )
 
-        self.tree.events.adata_saved.connect(
-            lambda x: self.save_adata_to_sdata(x.adata)
-        )
+        # When a new node is added, a new table is added on disk -> Refresh the
+        # Spatialdata widgets to see this new table from disk
+        self.tree.events.node_added.connect(
+            lambda x: self.refresh_sdata_widget_choices(x.table_name))
 
         # Hotdesk Adata
         adata = self.tree.adata
@@ -306,6 +307,8 @@ class AnnDataAnalysisParentWidget(QWidget):
     def update_adata_model(self):
         selection = self._adata_selection.value
         self.meta_adata = self.meta_sdata[selection]
+        # Enforce string indices for all parsed AnnDatas
+        self.meta_adata.obs.index = self.meta_adata.obs.index.astype(str)
         table_path = Path(self.meta_sdata.path, "tables", selection)
         self.events.meta_adata_changed(
             adata=self.meta_adata, table_path=table_path
@@ -319,27 +322,46 @@ class AnnDataAnalysisParentWidget(QWidget):
         # track: https://github.com/scverse/napari-spatialdata/issues/313
         return self.viewer.window._dock_widgets["SpatialData"].widget()
 
-    def save_adata_to_sdata(self, new_adata):
-        selection = self._adata_selection.value
-        node_name = self.tree.adata_tree_widget.currentItem().text(0)
-        if node_name == "Root":
-            save_name = f"{selection}_new"
-        else:
-            save_name = f"{selection}_{node_name}"
-
-        # meta_adata = self.meta_sdata[selection]
-        # Dont overwrite, track original?
-        new_selection_label = make_unique_sdata_element_name(
-            self.meta_sdata, save_name
+    def get_sdata_view_widget(self):
+        # NOTE: private API, temp solution
+        # track: https://github.com/scverse/napari-spatialdata/issues/313
+        return (
+            self.viewer
+                .window._dock_widgets["View (napari-spatialdata)"].widget()
         )
-        # Can parse AnnData directly as it will inherit the attrs from uns
-        self.meta_sdata.tables[new_selection_label] = new_adata.copy()
-        self.meta_sdata.write_element(new_selection_label)
-        self._adata_selection.reset_choices()
-        labels_name = new_adata.uns["spatialdata_attrs"]["region"]
-        # time.sleep(0.1)
-        if labels_name in self.viewer.layers:
-            labels = get_selected_layer(self.viewer, labels_name)
-            self.viewer.layers.remove(labels)
-            sdata_widget = self.get_sdata_widget()
-            sdata_widget._onClick(text=labels.name)
+    
+    def get_sdata_scatter_widget(self):
+        # NOTE: private API, temp solution
+        # track: https://github.com/scverse/napari-spatialdata/issues/313
+        return (
+            self.viewer
+                .window._dock_widgets["Scatter (napari-spatialdata)"].widget()
+        )
+
+    def refresh_sdata_widget_choices(self, table_name: str):
+        # Add to current layer as table_names;
+        for layer in self.viewer.layers:
+            if "sdata" in layer.metadata \
+                and layer.metadata["sdata"] == self.meta_sdata \
+                and "table_names" in layer.metadata \
+                and layer.metadata["table_names"] is not None:
+                layer.metadata["table_names"].append(table_name)
+
+        # Refresh the widgets to see the new table
+
+        # View (napari-spatialdata)
+        self.get_sdata_view_widget()._on_layer_update()
+
+        # NOTE: hacky temp solution trigger a fake event to update the
+        # scatter widget.. 
+        class FakeEvent:
+            def __init__(self, source, active):
+                self.source = source
+                self.active = active
+
+        fake_event = FakeEvent(
+            source=self.viewer.layers.selection.events.changed.source,
+            active=self.viewer.layers.selection.active,
+        )
+        # Scatter (napari-spatialdata)
+        self.get_sdata_scatter_widget()._on_selection(fake_event)

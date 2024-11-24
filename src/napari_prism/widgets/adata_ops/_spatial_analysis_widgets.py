@@ -242,7 +242,7 @@ class NolanComputeWidget(AnnDataOperatorWidget):
         number of CNs."""
         worker = self._compute_nolan_cns()
         worker.start()
-        worker.returned.connect(self.events.adata_changed)
+        worker.returned.connect(lambda x: self.events.adata_changed(adata=x))
 
     def update_model(self, adata):
         super().update_model(adata)
@@ -275,12 +275,17 @@ class NolanPlotWidget(QTabWidget):
             compute_tab: The compute tab widget that contains the parameters
                 for computing the CNs.
         """
+        self.events = EmitterGroup(
+            source=self,
+            adata_changed=None,
+        )
+
         super().__init__()
         self.viewer = viewer
         self.adata = None
         self.compute_tab = compute_tab
         self.compute_tab.events.cns_computed.connect(
-            lambda x: self.update_adata(x.value)
+            lambda x: self.update_adata(x.adata)
         )
         self.knee_point = None
         self.kneedle_plot = LinePlotCanvas(self.viewer, self)
@@ -296,7 +301,11 @@ class NolanPlotWidget(QTabWidget):
             nullable=True,
         )
         self.choose_K.changed.connect(self.update_enrichment_plot)
-        self.enrichment_matrix_plot.extend([self.choose_K])
+        self.export_K = create_widget(
+            name="Export K", widget_type="PushButton", annotation=bool
+        )
+        self.export_K.changed.connect(self.export_kmeans)
+        self.enrichment_matrix_plot.extend([self.choose_K, self.export_K])
         self.enrichment_matrix_plot.native.layout().addWidget(
             self.enrichment_matrix_canvas
         )
@@ -304,13 +313,20 @@ class NolanPlotWidget(QTabWidget):
 
         self.reset_choices()
 
+    def export_kmeans(self):
+        if self.choose_K.value is not None:
+            k = self.choose_K.value
+            data = self.adata.obsm["cn_labels"][str(k)]
+            self.adata.obs[f"cns_k{k}"] = data
+            self.events.adata_changed(adata=self.adata)
+
     def update_adata(self, adata: AnnData) -> None:
         """Update the adata model and the contained plots. Also update the
         kneedle plot to check if the new AnnData has the results from computing
         CNs."""
         self.adata = adata
-        self.update_kneedle_plot()
         self.reset_choices()
+        self.update_kneedle_plot()
 
     def reset_choices(self) -> None:
         """Since this is a QTabWidget, we need to reset the choices of the
@@ -335,14 +351,29 @@ class NolanPlotWidget(QTabWidget):
                 direction="decreasing",
             )
             self.knee_point = kneedle.knee
+            self.knee_point_y = inertia_results.loc[self.knee_point]["Inertia"]
             self.kneedle_plot.plot(
-                inertia_results.reset_index(), x="k_kmeans", y="Inertia"
+                inertia_results.reset_index(), 
+                x="k_kmeans", y="Inertia",
+                grid=True
             )
             self.kneedle_plot.axes.axvline(
                 self.knee_point,
                 linestyle="--",
                 label="knee/elbow",
+                color="r",
             )
+
+            self.knee_point_text = self.kneedle_plot.axes.text(
+                self.knee_point,
+                self.knee_point_y,
+                f"knee/elbow: {self.knee_point}",
+                ha="right",
+                va="top",
+                color="r",
+                transform=self.kneedle_plot.axes.get_xaxis_transform(),
+            )
+
             self.kneedle_plot.axes.legend()
         else:
             self.kneedle_plot.clear()
@@ -394,7 +425,7 @@ class NolanWidget(QTabWidget):
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
         self.events = EmitterGroup(
             source=self,
-            adata_changed=None,  # Passes NolanComputeWidget output
+            adata_changed=None,  # Passes outputs
         )
         super().__init__()
         self.viewer = viewer
@@ -406,6 +437,9 @@ class NolanWidget(QTabWidget):
         self.addTab(self.compute_tab.native, "Compute")
 
         self.plot_tab = NolanPlotWidget(self.viewer, self.compute_tab)
+        self.plot_tab.events.adata_changed.connect(
+            self.events.adata_changed
+        )
         self.addTab(self.plot_tab, "Visualise")
 
 
@@ -521,7 +555,7 @@ class ProximityDensityComputeWidget(AnnDataOperatorWidget):
         """
         worker = self._compute_proximity_density()
         worker.start()
-        worker.returned.connect(self.events.adata_changed)
+        worker.returned.connect(lambda x: self.events.adata_changed(adata=x))
 
     def update_model(self, adata):
         super().update_model(adata)
@@ -552,7 +586,7 @@ class ProximityDensityPlotWidget(QTabWidget):
         self.adata = None
         self.compute_tab = compute_tab
         self.compute_tab.events.prox_computed.connect(
-            lambda x: self.update_adata(x.value)
+            lambda x: self.update_adata(x.adata)
         )
         # PLOTS
         # self.proximity_density_plot = HeatmapPlotCanvas(self.viewer, self)

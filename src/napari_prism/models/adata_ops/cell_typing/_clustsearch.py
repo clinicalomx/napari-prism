@@ -1423,6 +1423,7 @@ class HybridPhenographSearch(HybridPhenographModular):
         if self.clusterer_backend == "GPU":
             results_df = results_df.to_pandas()
         results_df.columns = [f"{k}_{r}" for k, r in results_df.columns]
+        results_df.index = adata.obs.index
         adata.obsm[OBSM_ADDED_KEY] = results_df
         # adata.uns[UNS_ADDED_KEY_LABELMAP] = label_map
 
@@ -1717,6 +1718,7 @@ class ScanpyClusteringSearch(ScanpyClustering):
         if self.clusterer_backend == "GPU":
             results_df = results_df.to_pandas()
         results_df.columns = [f"{k}_{r}" for k, r in results_df.columns]
+        results_df.index = adata.obs.index
         adata.obsm[OBSM_ADDED_KEY] = results_df.astype(str)
         # adata.uns[UNS_ADDED_KEY_LABELMAP] = label_map
 

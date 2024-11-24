@@ -1,5 +1,6 @@
 from typing import Any
 
+import pandas as pd
 import matplotlib
 import napari
 from magicgui.widgets import ComboBox, create_widget
@@ -192,9 +193,25 @@ class LinePlotCanvas(GeneralMPLWidget):
     ) -> None:
         super().__init__(viewer, parent)
 
-    def _plot(self, *args, **kwargs):
-        sns.lineplot(*args, ax=self.axes, **kwargs)
-
+    def _plot(
+            self, 
+            data: pd.DataFrame, 
+            x: str, 
+            y: str, 
+            grid: bool, 
+            **kwargs):
+        # mpl axes, but with seaborn input for ease
+        #sns.lineplot(*args, ax=self.axes, **kwargs)
+        self.axes.plot(
+            x,
+            y,
+            data=data,
+            **kwargs)
+        if grid:
+            self.axes.grid(True)
+        self.axes.set_xticks(data[x].values)
+        self.axes.set_xlabel(x)
+        self.axes.set_ylabel(y)
 
 class HeatmapPlotCanvas(GeneralMPLWidget):
     """Widget for plotting a heatmap with seaborn."""

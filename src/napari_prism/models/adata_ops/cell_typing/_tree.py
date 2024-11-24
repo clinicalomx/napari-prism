@@ -139,6 +139,15 @@ class AnnDataNodeQT(QTreeWidgetItem):
         else:
             return self.adata[self.adata.obs[self.name] == label].copy()
 
+    def collect_parents(self):
+        """Collects all immediate and distant parent objects"""
+        collection = []
+        current_node = self
+        while current_node.parent() is not None:
+            current_node = current_node.parent()
+            collection.append(current_node)
+        return collection
+
     def collect_children(self):
         """Collects all immediate child objects"""
         n_children = self.childCount()
@@ -184,7 +193,7 @@ class AnnDataNodeQT(QTreeWidgetItem):
     def inherit_children_obs(self, log_steps=False) -> None:
         """Preorder Traversal"""
         # Traverse each child,
-        children = self.collect_child_adatas()
+        children = self.collect_all_children()
         if len(children) > 0:
             for child in children:
                 # Base case
