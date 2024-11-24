@@ -25,7 +25,6 @@ from qtpy.QtWidgets import (
     QTreeWidget,
     QVBoxLayout,
     QWidget,
-    QHeaderView
 )
 from spatialdata import SpatialData
 from spatialdata.models import TableModel
@@ -217,10 +216,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         table = TableModel.parse(table, *args, **kwargs)
         self.overwrite_element(self.sdata, table, table_name)
 
-    def update_model(
-        self, 
-        adata: AnnData,
-        save: bool = True) -> None:
+    def update_model(self, adata: AnnData, save: bool = True) -> None:
         """Update the selected AnnData node in the tree widget. Broadcasts this
         new AnnData object to all listeners.
 
@@ -258,10 +254,14 @@ class AnnDataTreeWidget(BaseNapariWidget):
         Args:
             adata: Anndata object.
         """
-        init_attrs = True if "tree_attrs" not in adata.uns else False
+        init_attrs = "tree_attrs" not in adata.uns
         adata_node = AnnDataNodeQT(
-            adata, None, "Root", self.adata_tree_widget, store=table_path,
-            init_attrs=init_attrs
+            adata,
+            None,
+            "Root",
+            self.adata_tree_widget,
+            store=table_path,
+            init_attrs=init_attrs,
         )
 
         for column in range(self.adata_tree_widget.columnCount()):
@@ -293,20 +293,20 @@ class AnnDataTreeWidget(BaseNapariWidget):
         children = list(adata.uns.get("tree_attrs", {}).get("children", []))
         if children != []:
             for child_path in children:
-                #element_name = child.store.stem
+                # element_name = child.store.stem
                 element_name = child_path.split("/")[-1]
                 assert element_name in self.sdata
                 child_adata = self.sdata.tables[element_name]
 
                 init_attrs = (
-                    True if "tree_attrs" not in child_adata.uns else False
+                    "tree_attrs" not in child_adata.uns
                 )
                 node = AnnDataNodeQT(
                     child_adata,
                     None,
                     child_adata.uns["tree_attrs"]["name"],
                     parent=parent_node,
-                    init_attrs=init_attrs
+                    init_attrs=init_attrs,
                 )
 
                 self.add_child_nodes_to_current(node.adata, node)
@@ -339,7 +339,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
             # Update the children of the parent_node with this new child node
             parent_node.update_children()
             self.save_node(parent_node)
-            
+
             if save:
                 self.save_node(node)
             self.adata_tree_widget.expandAll()
@@ -399,11 +399,12 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 # Delete on-disk tables
                 for n in to_delete:
                     self.delete_from_disk(
-                        self.sdata, n.store.stem, overwrite=True)
-            
+                        self.sdata, n.store.stem, overwrite=True
+                    )
+
             # Then simply disconnect the node from the parent
             parent.removeChild(node)
-            del node # delete the node from memory ?
+            del node  # delete the node from memory ?
             parent.update_children()
             self.save_node(parent)
 
@@ -603,7 +604,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         if parent:
             parent.update_children()
             self.save_node(parent)
-        
+
         children = node.collect_children()
         if children != []:
             for child in children:

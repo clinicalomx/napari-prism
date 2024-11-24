@@ -179,8 +179,7 @@ class AnnDataAnalysisParentWidget(QWidget):
         self.events.meta_sdata_changed.connect(
             lambda x: self.tree.set_sdata(x.sdata)
         )
-        self.events.meta_sdata_changed.connect(
-            self.refresh_adata_choices)
+        self.events.meta_sdata_changed.connect(self.refresh_adata_choices)
         # When the hotspot changes; update the tree
         self.events.meta_adata_changed.connect(
             lambda x: self.tree.create_model(

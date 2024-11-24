@@ -15,13 +15,8 @@ from qtpy.QtWidgets import (
 # QTree Versions
 class AnnDataNodeQT(QTreeWidgetItem):
     def __init__(
-            self, 
-            adata, 
-            labels, 
-            name, 
-            parent, 
-            store=None,
-            init_attrs=True):
+        self, adata, labels, name, parent, store=None, init_attrs=True
+    ):
         """
         adata : AnnData
         labels : list of new cluster labels
