@@ -111,7 +111,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
             source=self,
             adata_created=None,
             adata_changed=None,
-            node_added=None
+            node_added=None,
         )
 
         #: Create the root node for the tree widget.
@@ -317,8 +317,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
                     # remove the child -> deleted from disk folder
                     # saved as ndarray, so
                     mask = adata.uns["tree_attrs"]["children"] != child_path
-                    adata.uns["tree_attrs"]["children"] = (
-                        np.delete(adata.uns["tree_attrs"]["children"], mask)
+                    adata.uns["tree_attrs"]["children"] = np.delete(
+                        adata.uns["tree_attrs"]["children"], mask
                     )
             self.adata_tree_widget.expandAll()
 
@@ -327,7 +327,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         adata_indices,
         node_label,
     ):
-        """ Adds a new node with all features restored, but subsetted to a given
+        """Adds a new node with all features restored, but subsetted to a given
         set of indices."""
         root_adata = self.adata_tree_widget.topLevelItem(0).adata
         adata_slice = root_adata[adata_indices]
@@ -443,7 +443,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         # Create an obs selection, then create the table
         popout = QWidget()
         popout.setWindowTitle("Annotation Table")
-        #popout.setAttribute(Qt.WA_DeleteOnClose)
+        # popout.setAttribute(Qt.WA_DeleteOnClose)
         layout = QVBoxLayout()
         popout.resize(200, 500)
         popout.setLayout(layout)
@@ -472,7 +472,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         layout.addLayout(button_layout)
 
         def _create_annotation_table(label_name):
-            if self.annotation_table: # reset table
+            if self.annotation_table:  # reset table
                 self.annotation_table.native.setParent(None)
 
             labels = sorted(self.adata.obs[label_name].unique())
@@ -490,7 +490,6 @@ class AnnDataTreeWidget(BaseNapariWidget):
             # non-blocking pop out table
             layout.addWidget(annotation_table.native)
             layout.addWidget(confirm_button)
-
 
         cursor_position = QCursor.pos()
         popout.move(cursor_position)
@@ -1762,7 +1761,8 @@ class SubclusteringWidget(AnnDataOperatorWidget):
             )
             node_label = f"subset_{obs_keys}_{'_'.join(obs_labels)}"
             self.events.subcluster_created(
-                adata_indices=aug_adata.obs.index, label=node_label)
+                adata_indices=aug_adata.obs.index, label=node_label
+            )
 
     def get_obs_categories(self, widget=None) -> list[str]:
         """Get the available categories from the selected .obs key."""

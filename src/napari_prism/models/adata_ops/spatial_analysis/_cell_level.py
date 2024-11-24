@@ -6,10 +6,11 @@ import pandas as pd
 import scipy
 from anndata import AnnData
 from joblib import Parallel, delayed
+from loguru import logger
 from scipy.sparse import csr_matrix
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.neighbors import NearestNeighbors
-from loguru import logger
+
 from napari_prism.models.adata_ops.spatial_analysis._utils import (
     symmetrise_graph,
 )
@@ -412,7 +413,7 @@ def cellular_neighborhoods_sq(
     cn_labels.columns = cn_labels.columns.astype(str)
     cn_labels.index = adata.obs.index
     # structured
-    #cn_labels = np.array(cn_labels)#, dtype=[("k_kmeans", cn_labels.dtype)])
+    # cn_labels = np.array(cn_labels)#, dtype=[("k_kmeans", cn_labels.dtype)])
 
     adata.obsm["cn_labels"] = cn_labels
     adata.uns["cn_labels_dims"] = {"k_kmeans": k_kmeans}

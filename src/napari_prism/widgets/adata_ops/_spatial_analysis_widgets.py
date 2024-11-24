@@ -353,9 +353,10 @@ class NolanPlotWidget(QTabWidget):
             self.knee_point = kneedle.knee
             self.knee_point_y = inertia_results.loc[self.knee_point]["Inertia"]
             self.kneedle_plot.plot(
-                inertia_results.reset_index(), 
-                x="k_kmeans", y="Inertia",
-                grid=True
+                inertia_results.reset_index(),
+                x="k_kmeans",
+                y="Inertia",
+                grid=True,
             )
             self.kneedle_plot.axes.axvline(
                 self.knee_point,
@@ -437,9 +438,7 @@ class NolanWidget(QTabWidget):
         self.addTab(self.compute_tab.native, "Compute")
 
         self.plot_tab = NolanPlotWidget(self.viewer, self.compute_tab)
-        self.plot_tab.events.adata_changed.connect(
-            self.events.adata_changed
-        )
+        self.plot_tab.events.adata_changed.connect(self.events.adata_changed)
         self.addTab(self.plot_tab, "Visualise")
 
 

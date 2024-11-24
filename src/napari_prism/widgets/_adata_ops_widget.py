@@ -2,13 +2,9 @@ from pathlib import Path
 
 import napari
 from magicgui.widgets import ComboBox
-from napari.utils.events import EmitterGroup, Event
+from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTableWidget, QTabWidget, QVBoxLayout, QWidget
 
-from napari_prism.widgets._widget_utils import (
-    get_selected_layer,
-    make_unique_sdata_element_name,
-)
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._cell_typing_widgets import (
     AnnDataTreeWidget,
@@ -199,7 +195,8 @@ class AnnDataAnalysisParentWidget(QWidget):
         # When a new node is added, a new table is added on disk -> Refresh the
         # Spatialdata widgets to see this new table from disk
         self.tree.events.node_added.connect(
-            lambda x: self.refresh_sdata_widget_choices(x.table_name))
+            lambda x: self.refresh_sdata_widget_choices(x.table_name)
+        )
 
         # Hotdesk Adata
         adata = self.tree.adata
@@ -325,26 +322,26 @@ class AnnDataAnalysisParentWidget(QWidget):
     def get_sdata_view_widget(self):
         # NOTE: private API, temp solution
         # track: https://github.com/scverse/napari-spatialdata/issues/313
-        return (
-            self.viewer
-                .window._dock_widgets["View (napari-spatialdata)"].widget()
-        )
-    
+        return self.viewer.window._dock_widgets[
+            "View (napari-spatialdata)"
+        ].widget()
+
     def get_sdata_scatter_widget(self):
         # NOTE: private API, temp solution
         # track: https://github.com/scverse/napari-spatialdata/issues/313
-        return (
-            self.viewer
-                .window._dock_widgets["Scatter (napari-spatialdata)"].widget()
-        )
+        return self.viewer.window._dock_widgets[
+            "Scatter (napari-spatialdata)"
+        ].widget()
 
     def refresh_sdata_widget_choices(self, table_name: str):
         # Add to current layer as table_names;
         for layer in self.viewer.layers:
-            if "sdata" in layer.metadata \
-                and layer.metadata["sdata"] == self.meta_sdata \
-                and "table_names" in layer.metadata \
-                and layer.metadata["table_names"] is not None:
+            if (
+                "sdata" in layer.metadata
+                and layer.metadata["sdata"] == self.meta_sdata
+                and "table_names" in layer.metadata
+                and layer.metadata["table_names"] is not None
+            ):
                 layer.metadata["table_names"].append(table_name)
 
         # Refresh the widgets to see the new table
@@ -353,7 +350,7 @@ class AnnDataAnalysisParentWidget(QWidget):
         self.get_sdata_view_widget()._on_layer_update()
 
         # NOTE: hacky temp solution trigger a fake event to update the
-        # scatter widget.. 
+        # scatter widget..
         class FakeEvent:
             def __init__(self, source, active):
                 self.source = source
