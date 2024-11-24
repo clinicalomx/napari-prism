@@ -32,11 +32,11 @@ def add_obs_as_var(
 
     if isinstance(obs_columns, str):
         obs_columns = [obs_columns]
-    
+
     # Check if obs_columns is already in the anndata; subset to those that
     # are new
     obs_columns = [x for x in obs_columns if x not in adata.var_names]
-    
+
     aug_X = np.hstack(
         (X, adata.obs[obs_columns].values.reshape(-1, len(obs_columns)))
     )

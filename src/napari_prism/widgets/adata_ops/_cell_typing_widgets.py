@@ -25,6 +25,7 @@ from qtpy.QtWidgets import (
     QTreeWidget,
     QVBoxLayout,
     QWidget,
+    QHeaderView
 )
 from spatialdata import SpatialData
 from spatialdata.models import TableModel
@@ -118,6 +119,9 @@ class AnnDataTreeWidget(BaseNapariWidget):
         if adata is not None:
             self.create_model(adata)
 
+        if sdata is not None:
+            self.set_sdata(sdata)
+
         #: Annotation table widget for the obs keys.
         self.annotation_table = None
 
@@ -131,6 +135,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         Args:
             sdata: SpatialData object.
         """
+        print(f"self set sdata: {sdata}")
         self.sdata = sdata
         if self.sdata is None and self.adata_tree_widget is not None:
             self.adata_tree_widget.clear()
@@ -193,32 +198,29 @@ class AnnDataTreeWidget(BaseNapariWidget):
         sdata[element_name] = element
         sdata.write_element(element_name, overwrite=True)
 
-    def save_table(
+    def save_node(
         self,
-        table: AnnData | pd.DataFrame,
-        table_name: str,
-        write_element: bool = True,
+        node: AnnDataNodeQT,
         *args,
         **kwargs,
     ) -> None:
-        """Adds a table to the contained SpatialData.
+        """Adds a table to the contained SpatialData. `
 
         Args:
             table: The table to add.
-            table_name: Name of the table.
-            write_element: Whether to write the element to disk.
             *args: Passed to TableModel.parse.
             **kwargs: Passed to TableModel.parse.
         """
-        if isinstance(table, pd.DataFrame):
-            table = AnnData(obs=table)
+        table = node.adata
+        table_name = node.store.stem
 
         table = TableModel.parse(table, *args, **kwargs)
+        self.overwrite_element(self.sdata, table, table_name)
 
-        if write_element:
-            self.overwrite_element(self.sdata, table, table_name)
-
-    def update_model(self, adata: AnnData, save: bool = True) -> None:
+    def update_model(
+        self, 
+        adata: AnnData,
+        save: bool = True) -> None:
         """Update the selected AnnData node in the tree widget. Broadcasts this
         new AnnData object to all listeners.
 
@@ -235,11 +237,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
             current_node.set_adata(adata)
 
             if save:
-                self.save_table(
-                    current_node.adata,
-                    current_node.store.stem,
-                    write_element=True,
-                )
+                self.save_node(current_node)
 
             self.events.adata_changed(adata=self.adata)
 
@@ -260,8 +258,10 @@ class AnnDataTreeWidget(BaseNapariWidget):
         Args:
             adata: Anndata object.
         """
+        init_attrs = True if "tree_attrs" not in adata.uns else False
         adata_node = AnnDataNodeQT(
-            adata, None, "Root", self.adata_tree_widget, store=table_path
+            adata, None, "Root", self.adata_tree_widget, store=table_path,
+            init_attrs=init_attrs
         )
 
         for column in range(self.adata_tree_widget.columnCount()):
@@ -290,21 +290,27 @@ class AnnDataTreeWidget(BaseNapariWidget):
         Args:
             adata: Anndata object.
         """
-        children = adata.uns.get("tree_attrs", {}).get("children", [])
+        children = list(adata.uns.get("tree_attrs", {}).get("children", []))
         if children != []:
-            for child in children:
-                element_name = child.store.stem
+            for child_path in children:
+                #element_name = child.store.stem
+                element_name = child_path.split("/")[-1]
                 assert element_name in self.sdata
                 child_adata = self.sdata.tables[element_name]
 
+                init_attrs = (
+                    True if "tree_attrs" not in child_adata.uns else False
+                )
                 node = AnnDataNodeQT(
                     child_adata,
                     None,
                     child_adata.uns["tree_attrs"]["name"],
                     parent=parent_node,
+                    init_attrs=init_attrs
                 )
 
                 self.add_child_nodes_to_current(node.adata, node)
+            self.adata_tree_widget.expandAll()
 
     def add_node_to_current(
         self,
@@ -312,7 +318,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         node_label,
         obs_labels=None,
         save=True,
-        append_child_attr=True,
+        # append_child_attr=True,
     ):
         """Add a new node to the currently selected node in the tree widget. If
         the new node label already exists, it will not be added.
@@ -320,30 +326,22 @@ class AnnDataTreeWidget(BaseNapariWidget):
         matches = self.adata_tree_widget.findItems(
             node_label, Qt.MatchRecursive, 0
         )
-
+        parent_node = self.adata_tree_widget.currentItem()
         if matches == []:
-            # Bidirectional inheritance;
-
-            # Child knows its parent
+            # tree_attrs set in init
             node = AnnDataNodeQT(
                 adata_slice,
                 obs_labels,
                 node_label,
-                parent=self.adata_tree_widget.currentItem(),
+                parent=parent_node,
             )
-            # Parent knows its child through .uns
-            if append_child_attr:
-                # self.adata_tree_widget.currentItem().add_child_store(node)
-                adata = self.adata_tree_widget.currentItem().adata
-                adata.uns["tree_attrs"]["children"].append(str(node.store))
-                self.update_model(adata)
 
+            # Update the children of the parent_node with this new child node
+            parent_node.update_children()
+            self.save_node(parent_node)
+            
             if save:
-                self.save_table(
-                    node.adata,
-                    str(node.store.stem),
-                    write_element=True,
-                )
+                self.save_node(node)
             self.adata_tree_widget.expandAll()
 
     def show_context_menu(self, pos: QPoint) -> None:
@@ -388,27 +386,26 @@ class AnnDataTreeWidget(BaseNapariWidget):
     def delete_node(self, node: AnnDataNodeQT) -> None:
         """Deletes the current AnnData node and its children from the tree
         widget.
+
+        Since tables on disk are flat, we can just delete via list, then just
+        modify the attribute of the remaining parent node.
+
         """
         parent = node.parent()
         if parent:
-            # collect node children
-            to_delete = node.collect_all_children() + [node]
+            # collect node and children
+            to_delete = [node] + node.collect_all_children()
             if self.sdata.is_backed():
-                for node in to_delete:
+                # Delete on-disk tables
+                for n in to_delete:
                     self.delete_from_disk(
-                        self.sdata, node.store.stem, overwrite=True
-                    )
-                    parent.adata.uns["tree_attrs"]["children"].remove(
-                        str(node.store)
-                    )
+                        self.sdata, n.store.stem, overwrite=True)
+            
+            # Then simply disconnect the node from the parent
             parent.removeChild(node)
-            self.save_table(
-                parent.adata, parent.store.stem, write_element=True
-            )
-        # else:
-        #     self.adata_tree_widget.takeTopLevelItem(
-        #         self.adata_tree_widget.indexOfTopLevelItem(node)
-        #     )
+            del node # delete the node from memory ?
+            parent.update_children()
+            self.save_node(parent)
 
     def get_categorical_obs_keys(self, widget=None) -> list[str]:
         """Get the .obs keys from the AnnData object that are categorical."""
@@ -577,6 +574,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
         """Create the AnnData tree widget. Adds the root node to the tree if
         an anndata object is available.
         """
+
+        logger.info("Creating Tree Widget")
         self.adata_tree_widget = QTreeWidget()
         self.adata_tree_widget.itemChanged.connect(self.validate_node_name)
         self.adata_tree_widget.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -589,8 +588,31 @@ class AnnDataTreeWidget(BaseNapariWidget):
         self.adata_tree_widget.setColumnCount(len(HEADERS))
         self.adata_tree_widget.setHeaderLabels(HEADERS)
 
+        # set the initial column widths to 60/40 ratio each
+        total_width = self.adata_tree_widget.width()
+        self.adata_tree_widget.setColumnWidth(0, int(total_width * 0.6))
+        self.adata_tree_widget.setColumnWidth(1, int(total_width * 0.4))
+
         if self.adata is not None:
             self.add_root_node(self.adata, self.root_path)
+
+    def rename_node(self, node: AnnDataNodeQT, new_name: str) -> None:
+        node.rename(new_name)
+        # But also propagate changes to parent and child nodes
+        parent = node.parent()
+        if parent:
+            parent.update_children()
+            self.save_node(parent)
+        
+        children = node.collect_children()
+        if children != []:
+            for child in children:
+                child.update_parent()
+                new_child_name = new_name + "_" + child.text(0)
+                child.update_name(new_child_name)
+                self.save_node(child)
+
+        self.adata_tree_widget.setCurrentItem(node)
 
     def validate_node_name(self, node: AnnDataNodeQT, column: int) -> None:
         """Rename node function. Validates before setting the node name when
@@ -633,15 +655,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
 
         if is_unique:
             node.setData(0, Qt.UserRole, new_name)
-            if node.store.exists():
-                new_table_name = node.parent().store.stem + "_" + new_name
-                new_store = Path(
-                    node.store.parent,  # tables
-                    new_table_name,
-                )
-                # Will rename the store/folder on disk, and set the node store to
-                # that renamed store/folder
-                node.store = node.store.rename(new_store)
+            if node.store.exists() and new_name != old_name:
+                self.rename_node(node, new_name)
 
         else:
             node.setText(0, old_name)

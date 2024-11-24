@@ -14,7 +14,14 @@ from qtpy.QtWidgets import (
 
 # QTree Versions
 class AnnDataNodeQT(QTreeWidgetItem):
-    def __init__(self, adata, labels, name, parent, store=None):
+    def __init__(
+            self, 
+            adata, 
+            labels, 
+            name, 
+            parent, 
+            store=None,
+            init_attrs=True):
         """
         adata : AnnData
         labels : list of new cluster labels
@@ -45,20 +52,21 @@ class AnnDataNodeQT(QTreeWidgetItem):
                 assert len(labels) == adata.shape[0]
                 adata.obs[name] = labels
 
-        # Set parent in uns
-        if isinstance(parent, AnnDataNodeQT):
-            adata.uns["tree_attrs"] = {"parent": str(parent.store)}
+        # # And Label shown in widget
+        # if name == "Root":
+        #     name = self.store.stem
+        # adata.uns["tree_attrs"]["name"] = name
+
+        # # Empty child list
+        # adata.uns["tree_attrs"]["children"] = []
+        self.adata = adata.copy()
+        if init_attrs:
+            self.adata.uns["tree_attrs"] = {}
+            self.update_parent(call_set=False)
+            self.update_children(call_set=False)
+            self.update_name(name, call_set=True)
         else:
-            # Root node
-            adata.uns["tree_attrs"] = {"parent": str(store)}
-
-        # And Label shown in widget
-        adata.uns["tree_attrs"]["name"] = name
-
-        # Empty child list
-        adata.uns["tree_attrs"]["children"] = []
-
-        self.set_adata(adata)
+            self.set_adata(adata)
 
     def __repr__(self):
         def remove_after_n_obs_n_vars(input_string):
@@ -74,6 +82,40 @@ class AnnDataNodeQT(QTreeWidgetItem):
         out_repr = f"{remove_after_n_obs_n_vars(str(self.adata))}"
 
         return out_repr
+
+    def rename(self, new_name):
+        old_store = self.store
+        # Force update
+        self.adata.uns["tree_attrs"]["name"] = new_name
+        self.set_adata(self.adata)
+
+        new_table_name = self.parent().store.stem + "_" + new_name
+        new_store = Path(self.store.parent, new_table_name)
+        self.store = old_store.rename(new_store)
+
+    def update_children(self, call_set=True):
+        children = self.collect_children()
+        if children != []:
+            self.adata.uns["tree_attrs"]["children"] = [
+                str(child.store) for child in children
+            ]
+        else:
+            self.adata.uns["tree_attrs"]["children"] = []
+        if call_set:
+            self.set_adata(self.adata)
+
+    def update_name(self, name=None, call_set=True):
+        if name is None:
+            name = self.text(0)
+        self.adata.uns["tree_attrs"]["name"] = name
+        if call_set:
+            self.set_adata(self.adata)
+
+    def update_parent(self, call_set=True):
+        parent_store = str(self.parent().store) if self.parent() else None
+        self.adata.uns["tree_attrs"]["parent"] = parent_store
+        if call_set:
+            self.set_adata(self.adata)
 
     # NOTE: consider using @property
     def set_adata(self, adata):

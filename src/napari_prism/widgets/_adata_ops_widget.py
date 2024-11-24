@@ -147,13 +147,9 @@ class AnnDataAnalysisParentWidget(QWidget):
         if init_selected is not None and "sdata" in init_selected.metadata:
             self.update_sdata_model()
 
-        # self.viewer.layers.events.inserted.connect(self.refresh_choices_from_image)
-        # self.viewer = viewer
         self.viewer.layers.selection.events.changed.connect(
             self.update_sdata_model
         )
-
-        self.events.meta_sdata_changed.connect(self.refresh_adata_choices)
 
         # self.events.meta_sdata_changed.connect(
         #     lambda x: AnnDataOperatorWidget.update_sdata_all_operators(x.sdata)
@@ -179,9 +175,12 @@ class AnnDataAnalysisParentWidget(QWidget):
         self.tree.max_height = 500
         self.layout.addWidget(self.tree.native)
 
+        # Set sdata in tree before reseting the choices
         self.events.meta_sdata_changed.connect(
             lambda x: self.tree.set_sdata(x.sdata)
         )
+        self.events.meta_sdata_changed.connect(
+            self.refresh_adata_choices)
         # When the hotspot changes; update the tree
         self.events.meta_adata_changed.connect(
             lambda x: self.tree.create_model(
