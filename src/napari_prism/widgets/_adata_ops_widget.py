@@ -352,8 +352,6 @@ class AnnDataAnalysisParentWidget(QWidget):
         table_to_add: str | None = None,
         table_to_remove: str | None = None,
     ):
-        print(f"Table to add: {table_to_add}")
-        print(f"Table to remove: {table_to_remove}")
         # # Reload sdata
         # self.reload_sdata()
 
@@ -368,14 +366,12 @@ class AnnDataAnalysisParentWidget(QWidget):
                     table_to_add
                     and table_to_add not in layer.metadata["table_names"]
                 ):
-                    print(f"Adding {table_to_add} to {layer.name}")
                     layer.metadata["table_names"].append(table_to_add)
 
                 if (
                     table_to_remove
                     and table_to_remove in layer.metadata["table_names"]
                 ):
-                    print(f"Removing {table_to_remove} from {layer.name}")
                     layer.metadata["table_names"].remove(table_to_remove)
 
         # Refresh the widgets to see the new table
