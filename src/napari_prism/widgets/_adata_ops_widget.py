@@ -189,6 +189,10 @@ class AnnDataAnalysisParentWidget(QWidget):
             lambda x: AnnDataOperatorWidget.create_model_all_operators(x.adata)
         )
 
+        self.tree.events.adata_created.connect(
+            lambda: self._adata_selection.reset_choices()
+        )
+
         self.tree.events.adata_changed.connect(
             lambda x: AnnDataOperatorWidget.update_model_all_operators(x.adata)
         )

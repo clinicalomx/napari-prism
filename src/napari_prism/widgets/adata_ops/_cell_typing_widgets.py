@@ -817,7 +817,8 @@ class AugmentationWidget(AnnDataOperatorWidget):
         var_keys = self.var_selection.value
         if var_keys != []:
             aug_adata = subset_adata_by_var(self.adata, var_keys)
-            node_label = "subset" + "_".join(var_keys)
+            # node_label = "subset" + "_".join(var_keys)
+            node_label = "subset_by_var"
             self.events.augment_created(adata=aug_adata, label=node_label)
 
     def _add_obs_as_var(self) -> None:
@@ -830,7 +831,8 @@ class AugmentationWidget(AnnDataOperatorWidget):
         node_label = "" if layer_key is None else layer_key
         if obs_keys[0] is not None:
             aug_adata = add_obs_as_var(self.adata, obs_keys, layer_key)
-            node_label += f"_{'_'.join(obs_keys)}"
+            # node_label += f"_{'_'.join(obs_keys)}"
+            node_label = "added_obs_as_var"
             self.events.augment_created(adata=aug_adata, label=node_label)
 
 
