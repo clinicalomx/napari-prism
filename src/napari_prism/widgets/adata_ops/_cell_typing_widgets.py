@@ -63,6 +63,7 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
     ScanpyPlotWidget,
 )
 
+
 class AnnDataTreeWidget(BaseNapariWidget):
     """Widget for holding and saving a tree of AnnData objects as nodes.
 
@@ -311,7 +312,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
                     if list(node.adata.uns["tree_attrs"]["children"]) != []:
                         node.make_uneditable()
                         self.add_child_nodes_to_current(node.adata, node)
-                        
+
                 else:
                     # remove the child -> deleted from disk folder
                     # saved as ndarray, so
@@ -332,7 +333,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         if isinstance(root_adata.obs.index, pd.RangeIndex):
             root_adata.obs.index = root_adata.obs.index.astype(str)
         adata_slice = root_adata[adata_indices]
-        
+
         # But inherit obs-wise from the parent
         current_node = self.adata_tree_widget.currentItem()
         parent_adata = current_node.adata
@@ -374,8 +375,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 self.save_node(node)
 
             self.events.node_changed(
-                table_to_add=str(node.store.stem),
-                table_to_remove=None)
+                table_to_add=str(node.store.stem), table_to_remove=None
+            )
 
             # Lock the parent renaming system
             parent_node.make_uneditable()
@@ -438,8 +439,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
             self.save_node(parent)
 
             self.events.node_changed(
-                table_to_add=None,
-                table_to_remove=str(node.store.stem))
+                table_to_add=None, table_to_remove=str(node.store.stem)
+            )
             del node
 
     def get_categorical_obs_keys(self, widget=None) -> list[str]:
@@ -661,10 +662,10 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 new_child_name = new_name + "_" + child.text(0)
                 child.update_name(new_child_name)
                 self.save_node(child)
-        
+
         self.events.node_changed(
-            table_to_add=new_table_path,
-            table_to_remove=old_table_path)
+            table_to_add=new_table_path, table_to_remove=old_table_path
+        )
 
         self.adata_tree_widget.setCurrentItem(node)
 
@@ -715,6 +716,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
 
         else:
             node.setText(0, old_name)
+
 
 class AugmentationWidget(AnnDataOperatorWidget):
     """Widget for augmenting (adding vars, subsetting by vars) AnnData objects."""

@@ -5,6 +5,7 @@ import spatialdata as sd
 from magicgui.widgets import ComboBox
 from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTableWidget, QTabWidget, QVBoxLayout, QWidget
+
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._cell_typing_widgets import (
     AnnDataTreeWidget,
@@ -347,9 +348,10 @@ class AnnDataAnalysisParentWidget(QWidget):
                 layer.metadata["sdata"] = self.meta_sdata
 
     def refresh_sdata_widget_choices(
-        self, 
-        table_to_add: str | None = None, 
-        table_to_remove: str | None = None):
+        self,
+        table_to_add: str | None = None,
+        table_to_remove: str | None = None,
+    ):
         print(f"Table to add: {table_to_add}")
         print(f"Table to remove: {table_to_remove}")
         # # Reload sdata
@@ -361,14 +363,18 @@ class AnnDataAnalysisParentWidget(QWidget):
                 "sdata" in layer.metadata
                 and "table_names" in layer.metadata
                 and layer.metadata["table_names"] is not None
-            ):                
-                if table_to_add \
-                    and table_to_add not in layer.metadata["table_names"]:
+            ):
+                if (
+                    table_to_add
+                    and table_to_add not in layer.metadata["table_names"]
+                ):
                     print(f"Adding {table_to_add} to {layer.name}")
                     layer.metadata["table_names"].append(table_to_add)
 
-                if table_to_remove \
-                    and table_to_remove in layer.metadata["table_names"]:
+                if (
+                    table_to_remove
+                    and table_to_remove in layer.metadata["table_names"]
+                ):
                     print(f"Removing {table_to_remove} from {layer.name}")
                     layer.metadata["table_names"].remove(table_to_remove)
 

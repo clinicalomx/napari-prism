@@ -199,9 +199,11 @@ class AnnDataNodeQT(QTreeWidgetItem):
                 s = parent_obs[c]
                 na_indices = s[s.isna()].index
 
-                if c in child_obs.columns \
-                    and len(na_indices) == child_obs.shape[0] \
-                    and all(na_indices = child_obs.index):
+                if (
+                    c in child_obs.columns
+                    and len(na_indices) == child_obs.shape[0]
+                    and all(na_indices=child_obs.index)
+                ):
                     parent_obs.loc[na_indices, c] = child_obs[c]
 
         self.adata.obs = parent_obs

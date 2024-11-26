@@ -446,6 +446,7 @@ class NolanWidget(QTabWidget):
         if self.widget(index) == self.plot_tab:
             self.plot_tab.update_kneedle_plot()
 
+
 class ProximityDensityComputeWidget(AnnDataOperatorWidget):
     """Implementation of the proximity density component from the spatial_pscore
     function in scimap."""
