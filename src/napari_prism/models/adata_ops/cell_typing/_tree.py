@@ -34,7 +34,8 @@ class AnnDataNodeQT(QTreeWidgetItem):
 
         super(QTreeWidgetItem, self).__init__(parent)
         if name != "Root":
-            self.setFlags(self.flags() | Qt.ItemIsEditable)
+            self.make_editable()
+
         self.setText(0, name)
         self.setData(0, Qt.UserRole, self.text(0))
 
@@ -55,6 +56,8 @@ class AnnDataNodeQT(QTreeWidgetItem):
         # # Empty child list
         # adata.uns["tree_attrs"]["children"] = []
         self.adata = adata.copy()
+        if isinstance(self.adata.obs.index, pd.RangeIndex):
+            self.adata.obs.index = self.adata.obs.index.astype(str)
         if init_attrs:
             self.adata.uns["tree_attrs"] = {}
             self.update_parent(call_set=False)
@@ -78,15 +81,28 @@ class AnnDataNodeQT(QTreeWidgetItem):
 
         return out_repr
 
+    def make_uneditable(self):
+        self.setFlags(self.flags() & ~Qt.ItemIsEditable)
+
+    def make_editable(self):
+        self.setFlags(self.flags() | Qt.ItemIsEditable)
+
     def rename(self, new_name):
         old_store = self.store
         # Force update
-        self.adata.uns["tree_attrs"]["name"] = new_name
-        self.set_adata(self.adata)
+        self.update_name(new_name, call_set=True)
 
         new_table_name = self.parent().store.stem + "_" + new_name
         new_store = Path(self.store.parent, new_table_name)
+
         self.store = old_store.rename(new_store)
+
+    def update_name(self, name=None, call_set=True):
+        if name is None:
+            name = self.text(0)
+        self.adata.uns["tree_attrs"]["name"] = name
+        if call_set:
+            self.set_adata(self.adata)
 
     def update_children(self, call_set=True):
         children = self.collect_children()
@@ -96,13 +112,6 @@ class AnnDataNodeQT(QTreeWidgetItem):
             ]
         else:
             self.adata.uns["tree_attrs"]["children"] = []
-        if call_set:
-            self.set_adata(self.adata)
-
-    def update_name(self, name=None, call_set=True):
-        if name is None:
-            name = self.text(0)
-        self.adata.uns["tree_attrs"]["name"] = name
         if call_set:
             self.set_adata(self.adata)
 
@@ -174,17 +183,28 @@ class AnnDataNodeQT(QTreeWidgetItem):
         # check new cols, append with label if needed
         # If "new" is already in column from a different node of the same level,
         # Must ensure the columns are unique in a given subset.
-        new_cols = set(child_obs.columns) - set(parent_obs.columns)
-        rename = {}
-        node_label = child.text(0)
-        for k in new_cols:
-            rename[k] = node_label + "->" + k  # + "_" + node_label
+        new_cols = list(set(child_obs.columns) - set(parent_obs.columns))
+        if new_cols:
+            parent_obs = parent_obs.merge(
+                child_obs[new_cols],
+                how="left",
+                left_index=True,
+                right_index=True,
+            )
 
-        merged_obs = pd.merge(
-            parent_obs, child_obs.rename(columns=rename), how="left"
-        )
+        # Check for nan columns to fill raggedly
+        has_na = parent_obs.columns[parent_obs.isna().any()]
+        if has_na.any():
+            for c in has_na:
+                s = parent_obs[c]
+                na_indices = s[s.isna()].index
 
-        self.adata.obs = merged_obs
+                if c in child_obs.columns \
+                    and len(na_indices) == child_obs.shape[0] \
+                    and all(na_indices = child_obs.index):
+                    parent_obs.loc[na_indices, c] = child_obs[c]
+
+        self.adata.obs = parent_obs
 
     def absorb_child_obs(self, child, log_steps) -> None:
         self.inherit_child_obs(child, log_steps)

@@ -326,7 +326,6 @@ class NolanPlotWidget(QTabWidget):
         CNs."""
         self.adata = adata
         self.reset_choices()
-        self.update_kneedle_plot()
 
     def reset_choices(self) -> None:
         """Since this is a QTabWidget, we need to reset the choices of the
@@ -441,6 +440,11 @@ class NolanWidget(QTabWidget):
         self.plot_tab.events.adata_changed.connect(self.events.adata_changed)
         self.addTab(self.plot_tab, "Visualise")
 
+        self.currentChanged.connect(lambda x: self._on_tab_changed)
+
+    def _on_tab_changed(self, index):
+        if self.widget(index) == self.plot_tab:
+            self.plot_tab.update_kneedle_plot()
 
 class ProximityDensityComputeWidget(AnnDataOperatorWidget):
     """Implementation of the proximity density component from the spatial_pscore

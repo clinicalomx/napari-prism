@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import napari
+import spatialdata as sd
 from magicgui.widgets import ComboBox
 from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTableWidget, QTabWidget, QVBoxLayout, QWidget
-
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._cell_typing_widgets import (
     AnnDataTreeWidget,
@@ -168,7 +168,7 @@ class AnnDataAnalysisParentWidget(QWidget):
             self.viewer, self.meta_adata, self.meta_sdata
         )
         self.tree.min_height = 120
-        self.tree.max_height = 500
+        self.tree.max_height = 600
         self.layout.addWidget(self.tree.native)
 
         # Set sdata in tree before reseting the choices
@@ -194,8 +194,11 @@ class AnnDataAnalysisParentWidget(QWidget):
 
         # When a new node is added, a new table is added on disk -> Refresh the
         # Spatialdata widgets to see this new table from disk
-        self.tree.events.node_added.connect(
-            lambda x: self.refresh_sdata_widget_choices(x.table_name)
+        self.tree.events.node_changed.connect(
+            lambda x: self.refresh_sdata_widget_choices(
+                table_to_add=x.table_to_add,
+                table_to_remove=x.table_to_remove,
+            )
         )
 
         # Hotdesk Adata
@@ -333,16 +336,41 @@ class AnnDataAnalysisParentWidget(QWidget):
             "Scatter (napari-spatialdata)"
         ].widget()
 
-    def refresh_sdata_widget_choices(self, table_name: str):
+    def reload_sdata(self):
+        self.meta_sdata = sd.read_zarr(self.meta_sdata.path)
+        for layer in self.viewer.layers:
+            if (
+                "sdata" in layer.metadata
+                and layer.metadata["sdata"] is not None
+                and layer.metadata["sdata"].path == self.meta_sdata.path
+            ):
+                layer.metadata["sdata"] = self.meta_sdata
+
+    def refresh_sdata_widget_choices(
+        self, 
+        table_to_add: str | None = None, 
+        table_to_remove: str | None = None):
+        print(f"Table to add: {table_to_add}")
+        print(f"Table to remove: {table_to_remove}")
+        # # Reload sdata
+        # self.reload_sdata()
+
         # Add to current layer as table_names;
         for layer in self.viewer.layers:
             if (
                 "sdata" in layer.metadata
-                and layer.metadata["sdata"] == self.meta_sdata
                 and "table_names" in layer.metadata
                 and layer.metadata["table_names"] is not None
-            ):
-                layer.metadata["table_names"].append(table_name)
+            ):                
+                if table_to_add \
+                    and table_to_add not in layer.metadata["table_names"]:
+                    print(f"Adding {table_to_add} to {layer.name}")
+                    layer.metadata["table_names"].append(table_to_add)
+
+                if table_to_remove \
+                    and table_to_remove in layer.metadata["table_names"]:
+                    print(f"Removing {table_to_remove} from {layer.name}")
+                    layer.metadata["table_names"].remove(table_to_remove)
 
         # Refresh the widgets to see the new table
 

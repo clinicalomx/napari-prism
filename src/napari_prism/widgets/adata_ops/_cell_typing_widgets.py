@@ -63,7 +63,6 @@ from napari_prism.widgets.adata_ops._scanpy_widgets import (
     ScanpyPlotWidget,
 )
 
-
 class AnnDataTreeWidget(BaseNapariWidget):
     """Widget for holding and saving a tree of AnnData objects as nodes.
 
@@ -111,7 +110,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
             source=self,
             adata_created=None,
             adata_changed=None,
-            node_added=None,
+            node_changed=None,
         )
 
         #: Create the root node for the tree widget.
@@ -185,6 +184,10 @@ class AnnDataTreeWidget(BaseNapariWidget):
         """Overwrite an element in the SpatialData object with a new element.
         If the element already exists, it will be replaced.
 
+        Uses the second? workaround for incremental io:
+            https://github.com/scverse/spatialdata/blob/main/tests/io/
+            test_readwrite.py
+
         Args:
             sdata: The SpatialData object containing the element.
             element: The new element to add.
@@ -234,11 +237,11 @@ class AnnDataTreeWidget(BaseNapariWidget):
             if save:
                 self.save_node(current_node)
 
-            # Update the parents and their parents to inherit obs keys
-            all_parents = current_node.collect_parents()
-            if all_parents != []:
-                for p in all_parents:
-                    p.inherit_children_obs()
+            # # Update the parents and their parents to inherit obs keys ?
+            # all_parents = current_node.collect_parents()
+            # if all_parents != []:
+            #     for p in all_parents:
+            #         p.inherit_children_obs()
             self.events.adata_changed(adata=self.adata)
 
     def refresh_node_labels(self) -> None:
@@ -273,12 +276,6 @@ class AnnDataTreeWidget(BaseNapariWidget):
 
         self.adata_tree_widget.setCurrentItem(adata_node)
 
-        def on_tree_item_changed(item):
-            if item and hasattr(item, "adata"):
-                self.update_model(item.adata, save=False)
-
-        self.adata_tree_widget.currentItemChanged.connect(on_tree_item_changed)
-
         # Now we check if we have existing tables that used to be its children
         # from a previous run
         self.add_child_nodes_to_current(
@@ -311,8 +308,10 @@ class AnnDataTreeWidget(BaseNapariWidget):
                         parent=parent_node,
                         init_attrs=init_attrs,
                     )
-
-                    self.add_child_nodes_to_current(node.adata, node)
+                    if list(node.adata.uns["tree_attrs"]["children"]) != []:
+                        node.make_uneditable()
+                        self.add_child_nodes_to_current(node.adata, node)
+                        
                 else:
                     # remove the child -> deleted from disk folder
                     # saved as ndarray, so
@@ -330,7 +329,17 @@ class AnnDataTreeWidget(BaseNapariWidget):
         """Adds a new node with all features restored, but subsetted to a given
         set of indices."""
         root_adata = self.adata_tree_widget.topLevelItem(0).adata
+        if isinstance(root_adata.obs.index, pd.RangeIndex):
+            root_adata.obs.index = root_adata.obs.index.astype(str)
         adata_slice = root_adata[adata_indices]
+        
+        # But inherit obs-wise from the parent
+        current_node = self.adata_tree_widget.currentItem()
+        parent_adata = current_node.adata
+        parent_sliced = parent_adata[adata_indices]
+        adata_slice.obs = parent_sliced.obs
+        adata_slice.obsm = parent_sliced.obsm
+
         self.add_node_to_current(adata_slice, node_label)
 
     def add_node_to_current(
@@ -364,7 +373,12 @@ class AnnDataTreeWidget(BaseNapariWidget):
             if save:
                 self.save_node(node)
 
-            self.events.node_added(table_name=str(node.store.stem))
+            self.events.node_changed(
+                table_to_add=str(node.store.stem),
+                table_to_remove=None)
+
+            # Lock the parent renaming system
+            parent_node.make_uneditable()
             self.adata_tree_widget.expandAll()
 
     def show_context_menu(self, pos: QPoint) -> None:
@@ -415,12 +429,18 @@ class AnnDataTreeWidget(BaseNapariWidget):
                     self.delete_from_disk(
                         self.sdata, n.store.stem, overwrite=True
                     )
-
             # Then simply disconnect the node from the parent
             parent.removeChild(node)
-            del node  # delete the node from memory ?
             parent.update_children()
+
+            # Make parent editable now that its a terminal node
+            parent.make_editable()
             self.save_node(parent)
+
+            self.events.node_changed(
+                table_to_add=None,
+                table_to_remove=str(node.store.stem))
+            del node
 
     def get_categorical_obs_keys(self, widget=None) -> list[str]:
         """Get the .obs keys from the AnnData object that are categorical."""
@@ -598,6 +618,14 @@ class AnnDataTreeWidget(BaseNapariWidget):
         logger.info("Creating Tree Widget")
         self.adata_tree_widget = QTreeWidget()
         self.adata_tree_widget.itemChanged.connect(self.validate_node_name)
+
+        def on_tree_item_changed(item: AnnDataNodeQT):
+            if item and hasattr(item, "adata"):
+                if item.collect_children() != []:
+                    item.inherit_children_obs()
+                self.update_model(item.adata, save=False)
+
+        self.adata_tree_widget.currentItemChanged.connect(on_tree_item_changed)
         self.adata_tree_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.adata_tree_widget.customContextMenuRequested.connect(
             self.show_context_menu
@@ -617,7 +645,9 @@ class AnnDataTreeWidget(BaseNapariWidget):
             self.add_root_node(self.adata, self.root_path)
 
     def rename_node(self, node: AnnDataNodeQT, new_name: str) -> None:
+        old_table_path = str(node.store.stem)
         node.rename(new_name)
+        new_table_path = str(node.store.stem)
         # But also propagate changes to parent and child nodes
         parent = node.parent()
         if parent:
@@ -631,6 +661,10 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 new_child_name = new_name + "_" + child.text(0)
                 child.update_name(new_child_name)
                 self.save_node(child)
+        
+        self.events.node_changed(
+            table_to_add=new_table_path,
+            table_to_remove=old_table_path)
 
         self.adata_tree_widget.setCurrentItem(node)
 
@@ -677,10 +711,10 @@ class AnnDataTreeWidget(BaseNapariWidget):
             node.setData(0, Qt.UserRole, new_name)
             if node.store.exists() and new_name != old_name:
                 self.rename_node(node, new_name)
+                self.save_node(node)
 
         else:
             node.setText(0, old_name)
-
 
 class AugmentationWidget(AnnDataOperatorWidget):
     """Widget for augmenting (adding vars, subsetting by vars) AnnData objects."""
