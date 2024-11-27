@@ -201,10 +201,16 @@ class AnnDataNodeQT(QTreeWidgetItem):
 
                 if (
                     c in child_obs.columns
-                    and len(na_indices) == child_obs.shape[0]
-                    and all(na_indices=child_obs.index)
+                    # Check that parent is indeed a full subset of child
+                    and len(na_indices) >= child_obs.shape[0]
+                    # Check that all new values in subset cover NaNs only
+                    and all(child_obs.index.isin(na_indices))
                 ):
-                    parent_obs.loc[na_indices, c] = child_obs[c]
+                    # Reset cats
+                    to_add = child_obs[c].copy().astype(str)
+                    parent_obs[c] = parent_obs[c].astype(str)
+                    parent_obs.loc[na_indices, c] = to_add
+                    parent_obs[c] = parent_obs[c].astype("category")
 
         self.adata.obs = parent_obs
 

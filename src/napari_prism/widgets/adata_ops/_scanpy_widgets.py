@@ -12,7 +12,7 @@ from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QWidget
 
 from napari_prism import pp, tl
-from napari_prism.constants import CELL_INDEX_LABEL
+from napari_prism.constants import CELL_INDEX_LABEL, DEFAULT_DIVERGENT_CMAP
 from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._plot_widgets import GeneralMPLWidget
@@ -269,7 +269,7 @@ class ScanpyPlotWidget(AnnDataOperatorWidget):
             # Check bounds
             layer = self._expression_selector.value
             if self.adata.layers[layer].min() < 0:
-                cmap = "bwr"
+                cmap = DEFAULT_DIVERGENT_CMAP
                 vmin = self.adata.layers[layer].min()
                 vmax = self.adata.layers[layer].max()
                 vcenter = 0

@@ -10,6 +10,7 @@ from napari.qt.threading import thread_worker
 from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTabWidget
 
+from napari_prism.constants import DEFAULT_DIVERGENT_CMAP
 from napari_prism.models.adata_ops.spatial_analysis._cell_level import (
     cellular_neighborhoods_sq,
     proximity_density,
@@ -77,7 +78,7 @@ class GraphBuilderWidget(AnnDataOperatorWidget):
         )
 
         self.percentile = create_widget(
-            value=99,
+            value=None,
             name="percentile",
             annotation=float,
             widget_type="SpinBox",
@@ -404,7 +405,7 @@ class NolanPlotWidget(QTabWidget):
 
         if self.choose_K.value is not None:
             data = enrichment_results[str(chosen_k)].T.sort_index()
-            cmap = "bwr"
+            cmap = DEFAULT_DIVERGENT_CMAP
             mag_max = data.abs().max().max()
             self.enrichment_matrix_canvas.plot(
                 data=data,
@@ -440,7 +441,7 @@ class NolanWidget(QTabWidget):
         self.plot_tab.events.adata_changed.connect(self.events.adata_changed)
         self.addTab(self.plot_tab, "Visualise")
 
-        self.currentChanged.connect(lambda x: self._on_tab_changed)
+        self.currentChanged.connect(lambda x: self._on_tab_changed(x))
 
     def _on_tab_changed(self, index):
         if self.widget(index) == self.plot_tab:

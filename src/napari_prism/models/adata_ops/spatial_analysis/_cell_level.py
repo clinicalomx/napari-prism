@@ -182,6 +182,9 @@ def proximity_density(
     squidpy.gr.spatial_neighbors.
 
     """
+    # Drop na phenotype rows
+    adata = adata[~adata.obs[phenotype].isna()]
+
     if connectivity_key not in adata.obsp:
         raise ValueError("No adjacency matrix found in adata.obsp.")
 
@@ -328,18 +331,24 @@ def cellular_neighborhoods_sq(
     if k_kmeans is None:
         k_kmeans = [10]
 
-    phenotypes = adata.obs[phenotype].unique()
+    phenotypes = adata.obs[phenotype].unique().dropna()
 
     conn = adata.obsp[connectivity_key]
-    row_ix, col_ix = conn.nonzero()
+    #row_ix, col_ix = conn.nonzero()
     # List incase of ragged arr -> i.e. if graph is not symmetric.
     neighbors = [[] for _ in range(conn.shape[0])]
 
     # For each row or cell, get its neighbors according to the graph;
     cell_indices = adata.obs.index
-    for r in range(conn.shape[0]):
-        cix = np.where(row_ix == r)
-        neighbors[r] = col_ix[cix]
+    # for r in range(conn.shape[0]):
+    #     cix = np.where(row_ix == r)
+    #     neighbors[r] = col_ix[cix]
+
+    #speed up with csr row ptrs
+    neighbors = [
+        conn.indices[conn.indptr[i]:conn.indptr[i + 1]] 
+        for i in range(conn.shape[0])
+    ]
 
     X_dat = adata.obs
     dummies = pd.get_dummies(X_dat[phenotype])
@@ -378,7 +387,7 @@ def cellular_neighborhoods_sq(
         else:
             kmeans_instance = kmeans_cls(
                 n_clusters=k,
-                n_init=10,
+                n_init=3,
                 random_state=0,
                 init="k-means++",  # 'best' initializer for kms
             )
@@ -388,7 +397,7 @@ def cellular_neighborhoods_sq(
 
         # enrichment scores;
         distances_to_centroids = kmeans_instance.cluster_centers_
-        frequencies = total_neighbor_counts.mean(axis=0).values
+        frequencies = total_neighbor_counts.astype(bool).mean(axis=0).values
         num = distances_to_centroids + frequencies
         norm = (distances_to_centroids + frequencies).sum(
             axis=1, keepdims=True

@@ -168,7 +168,7 @@ class AnnDataAnalysisParentWidget(QWidget):
         self.tree = AnnDataTreeWidget(
             self.viewer, self.meta_adata, self.meta_sdata
         )
-        self.tree.min_height = 120
+        self.tree.min_height = 175
         self.tree.max_height = 600
         self.layout.addWidget(self.tree.native)
 

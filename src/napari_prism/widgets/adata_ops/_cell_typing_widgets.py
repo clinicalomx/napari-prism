@@ -496,7 +496,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
             if self.annotation_table:  # reset table
                 self.annotation_table.native.setParent(None)
 
-            labels = sorted(self.adata.obs[label_name].unique())
+            #labels = sorted(self.adata.obs[label_name].unique())
+            labels = self.adata.obs[label_name].cat.categories.tolist()
             tbl = {
                 label_name: labels,
                 self.DEFAULT_ANNOTATION_NAME: [None]
@@ -525,6 +526,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
         d = EditableTable.reverse_drop_key_to_val(value)
         original_obs, original_labels = list(d.items())[0]
         new_obs, new_labels = list(d.items())[1]
+        if new_obs.removesuffix("_new") == original_obs:
+            new_obs = new_obs.removesuffix("_new")
         if (
             new_obs != self.DEFAULT_ANNOTATION_NAME
             and self.DEFAULT_ANNOTATION_NAME in self.adata.obs
@@ -621,10 +624,12 @@ class AnnDataTreeWidget(BaseNapariWidget):
         self.adata_tree_widget.itemChanged.connect(self.validate_node_name)
 
         def on_tree_item_changed(item: AnnDataNodeQT):
+            save = False
             if item and hasattr(item, "adata"):
                 if item.collect_children() != []:
                     item.inherit_children_obs()
-                self.update_model(item.adata, save=False)
+                    save = True
+                self.update_model(item.adata, save=save)
 
         self.adata_tree_widget.currentItemChanged.connect(on_tree_item_changed)
         self.adata_tree_widget.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1711,6 +1716,7 @@ class ClusterAnnotatorWidget(AnnDataOperatorWidget):
             source=self,
             adata_changed=None,
         )
+        self.obs_widget = None
         super().__init__(viewer, adata)
 
     def create_model(self, adata: AnnData) -> None:
@@ -1718,6 +1724,14 @@ class ClusterAnnotatorWidget(AnnDataOperatorWidget):
 
     def update_model(self, adata: AnnData) -> None:
         self.adata = adata
+        if (
+            self.adata is not None
+            and self.obs_widget.obs_selection is not None
+            and self.obs_widget._expression_selector is not None
+        ):
+            self.obs_widget.update_plot()
+        else:
+            self.obs_widget.scanpy_canvas.clear()
 
     def create_parameter_widgets(self) -> None:
         """Create widgets for the cluster annotator widget. Launches a separate
