@@ -5,12 +5,12 @@ import napari
 import pandas as pd
 from magicgui.widgets import ComboBox, create_widget
 from qtpy.QtWidgets import QVBoxLayout, QWidget
-from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
-from anndata import AnnData
+
 matplotlib.use("Qt5Agg")
 from enum import Enum
 
 import matplotlib.style as mplstyle
+import PyComplexHeatmap as pch
 import seaborn as sns
 from matplotlib.backends.backend_qtagg import (
     FigureCanvas,
@@ -18,7 +18,7 @@ from matplotlib.backends.backend_qtagg import (
 )
 from matplotlib.figure import Figure
 from napari_matplotlib.base import BaseNapariMPLWidget
-import PyComplexHeatmap as pch
+
 
 class GeneralMPLWidget(BaseNapariMPLWidget):
     """Base widget for widgets which show matplotlib-compatible plots
@@ -67,7 +67,6 @@ class GeneralMPLWidget(BaseNapariMPLWidget):
                 left=left, right=right, bottom=bottom, top=top
             )
             self.canvas.draw()
-        
 
     def clear(self) -> None:
         """Clear the current contained figure and axes."""
@@ -352,7 +351,6 @@ class ClusterEvaluatorPlotCanvas(QWidget):
         self.update_plot()
 
 
-
 # NOTE feature modelling type plot
 class ComplexHeatmapPlotCanvas(GeneralMPLWidget):
     """Widget for plotting PyComplexHeatmaps"""
@@ -386,10 +384,7 @@ class ComplexHeatmapPlotCanvas(GeneralMPLWidget):
                 row_kwargs[k] = pch.anno_simple(df, height=2)
 
             metadata_annotation = pch.HeatmapAnnotation(
-                axis=1,
-                wgap=1,
-                hgap=1,
-                **row_kwargs
+                axis=1, wgap=1, hgap=1, **row_kwargs
             )
 
         hm = pch.ClusterMapPlotter(
@@ -406,10 +401,10 @@ class ComplexHeatmapPlotCanvas(GeneralMPLWidget):
             # legend_hpad=5,
             # col_dendrogram=True,
             # col_cluster=True
-            plot=False
+            plot=False,
         )
 
-        # Need to add internal padding to axes since 
+        # Need to add internal padding to axes since
         # PyComplexHeatmap appends stuff outside the axes
         hm.plot(self.axes)
         hm.plot_legends(self.axes)

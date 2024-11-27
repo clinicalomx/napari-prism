@@ -20,9 +20,9 @@ from napari_prism.models.adata_ops.spatial_analysis._cell_level import (
 from napari_prism.widgets._widget_utils import RangeEditInt
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._plot_widgets import (
+    ComplexHeatmapPlotCanvas,
     HeatmapPlotCanvas,
     LinePlotCanvas,
-    ComplexHeatmapPlotCanvas,
 )
 
 
@@ -143,7 +143,7 @@ class GraphBuilderWidget(AnnDataOperatorWidget):
         kwargs["delaunay"] = self.delaunay.value
         kwargs["percentile"] = (
             self.percentile.value if self.percentile.value > 0 else None
-            )
+        )
         kwargs["transform"] = self.transform.value
         kwargs["set_diag"] = self.set_diag.value
         kwargs["key_added"] = self.key_added.value
@@ -626,18 +626,15 @@ class ProximityDensityPlotWidget(QTabWidget):
             [self.region_key, self.metadata_key, self.plot_button]
         )
         # PLOTS
-        self.pch_canvas = ComplexHeatmapPlotCanvas(
-            self.viewer, self)
-        self.pch_plot.native.layout().addWidget(
-            self.pch_canvas
-        )
+        self.pch_canvas = ComplexHeatmapPlotCanvas(self.viewer, self)
+        self.pch_plot.native.layout().addWidget(self.pch_canvas)
         self.addTab(self.pch_plot.native, "Complex Heatmap")
 
     def update_pch_plot(self):
         # Unpack variables
         data = self.adata.uns[self.PROX_RESULTS_KEY]
         # indices;
-        
+
         # re-instantiate mli
         data = data.set_index(data.columns[:2].tolist())
 
@@ -675,7 +672,7 @@ class ProximityDensityPlotWidget(QTabWidget):
             return self.obs_helper.parallel_keys
         else:
             return []
-            
+
     def get_categorical_obs_keys(self, widget=None) -> list[str]:
         """Returns categorical keys of the obs attribute of the AnnData object.
         If `adata` is None, returns an empty list."""
