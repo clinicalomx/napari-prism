@@ -169,6 +169,7 @@ def proximity_density(
     phenotype: str,
     pairs: list[tuple[str, str]] = None,
     connectivity_key: str = "spatial_connectivities",
+    multi_index: bool = False,
     inplace: bool = True,
     n_jobs: int = 4,
 ) -> None | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -259,6 +260,11 @@ def proximity_density(
     count_df = pd.DataFrame(count_comparisons)
     count_df.index = count_df.index.set_names(labels)
     count_df.columns.name = grouping
+
+    if not multi_index:
+        grouping_df = grouping_df.reset_index()
+        mask_df = mask_df.reset_index()
+        count_df = count_df.reset_index()
 
     if inplace:
         adata.uns["proximity_density_results"] = grouping_df

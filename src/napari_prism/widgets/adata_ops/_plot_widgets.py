@@ -5,7 +5,8 @@ import napari
 import pandas as pd
 from magicgui.widgets import ComboBox, create_widget
 from qtpy.QtWidgets import QVBoxLayout, QWidget
-
+from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
+from anndata import AnnData
 matplotlib.use("Qt5Agg")
 from enum import Enum
 
@@ -17,7 +18,7 @@ from matplotlib.backends.backend_qtagg import (
 )
 from matplotlib.figure import Figure
 from napari_matplotlib.base import BaseNapariMPLWidget
-
+import PyComplexHeatmap as pch
 
 class GeneralMPLWidget(BaseNapariMPLWidget):
     """Base widget for widgets which show matplotlib-compatible plots
@@ -46,6 +47,10 @@ class GeneralMPLWidget(BaseNapariMPLWidget):
             *args: Passed to `self._plot`
             **kwargs: Passed to `self._plot`
         """
+        subplots_adjust = None
+        if "subplots_adjust" in kwargs:
+            subplots_adjust = kwargs.pop("subplots_adjust")
+
         self.clear()
         self.add_single_axes()
 
@@ -53,6 +58,16 @@ class GeneralMPLWidget(BaseNapariMPLWidget):
             self._plot(*args, **kwargs)
 
         self.canvas.draw_idle()
+        self.canvas.draw()
+
+        if subplots_adjust is not None:
+            left, right, bottom, top = subplots_adjust
+            self.canvas.figure.tight_layout()
+            self.canvas.figure.subplots_adjust(
+                left=left, right=right, bottom=bottom, top=top
+            )
+            self.canvas.draw()
+        
 
     def clear(self) -> None:
         """Clear the current contained figure and axes."""
@@ -337,6 +352,7 @@ class ClusterEvaluatorPlotCanvas(QWidget):
         self.update_plot()
 
 
+
 # NOTE feature modelling type plot
 class ComplexHeatmapPlotCanvas(GeneralMPLWidget):
     """Widget for plotting PyComplexHeatmaps"""
@@ -348,5 +364,52 @@ class ComplexHeatmapPlotCanvas(GeneralMPLWidget):
     ) -> None:
         super().__init__(viewer, parent)
 
-    def _plot(self):
-        raise NotImplementedError()
+    def _plot(
+        self,
+        data,
+        obs_helper,
+        metadata_keys,
+    ) -> None:
+        metadata_annotation = None
+
+        if isinstance(metadata_keys, str):
+            metadata_keys = [metadata_keys]
+
+        if metadata_keys is not None:
+            # Get metadata stratified by region
+            metadata_dfs = {}
+            for k in metadata_keys:
+                metadata_dfs[k] = obs_helper.get_metadata_df(k).astype(str)
+
+            row_kwargs = {}
+            for k, df in metadata_dfs.items():
+                row_kwargs[k] = pch.anno_simple(df, height=2)
+
+            metadata_annotation = pch.HeatmapAnnotation(
+                axis=1,
+                wgap=1,
+                hgap=1,
+                **row_kwargs
+            )
+
+        hm = pch.ClusterMapPlotter(
+            data,
+            col_cluster=True,
+            col_dendrogram=True,
+            top_annotation=metadata_annotation,
+            cmap="viridis",
+            show_rownames=True,
+            show_colnames=True,
+            vmin=0,
+            vmax=1,
+            legend=True,
+            # legend_hpad=5,
+            # col_dendrogram=True,
+            # col_cluster=True
+            plot=False
+        )
+
+        # Need to add internal padding to axes since 
+        # PyComplexHeatmap appends stuff outside the axes
+        hm.plot(self.axes)
+        hm.plot_legends(self.axes)

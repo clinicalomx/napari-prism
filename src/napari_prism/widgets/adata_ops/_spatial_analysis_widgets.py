@@ -2,6 +2,7 @@ from itertools import product
 
 import napari
 import numpy as np
+import pandas as pd
 import squidpy as sq
 from anndata import AnnData
 from kneed import KneeLocator
@@ -11,6 +12,7 @@ from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTabWidget
 
 from napari_prism.constants import DEFAULT_DIVERGENT_CMAP
+from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
 from napari_prism.models.adata_ops.spatial_analysis._cell_level import (
     cellular_neighborhoods_sq,
     proximity_density,
@@ -20,6 +22,7 @@ from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._plot_widgets import (
     HeatmapPlotCanvas,
     LinePlotCanvas,
+    ComplexHeatmapPlotCanvas,
 )
 
 
@@ -78,7 +81,7 @@ class GraphBuilderWidget(AnnDataOperatorWidget):
         )
 
         self.percentile = create_widget(
-            value=None,
+            value=0.0,
             name="percentile",
             annotation=float,
             widget_type="SpinBox",
@@ -138,7 +141,9 @@ class GraphBuilderWidget(AnnDataOperatorWidget):
             self.radius.value if self.radius.value > -1 else None
         )
         kwargs["delaunay"] = self.delaunay.value
-        kwargs["percentile"] = self.percentile.value
+        kwargs["percentile"] = (
+            self.percentile.value if self.percentile.value > 0 else None
+            )
         kwargs["transform"] = self.transform.value
         kwargs["set_diag"] = self.set_diag.value
         kwargs["key_added"] = self.key_added.value
@@ -549,6 +554,7 @@ class ProximityDensityComputeWidget(AnnDataOperatorWidget):
             grouping=self.library_key.value,
             phenotype=self.phenotype_key.value,
             connectivity_key=self.connectivity_key.value,
+            multi_index=False,
         )
         self.compute_button.enabled = True
         return adata
@@ -589,22 +595,103 @@ class ProximityDensityPlotWidget(QTabWidget):
         super().__init__()
         self.viewer = viewer
         self.adata = None
+        self.obs_helper = None
         self.compute_tab = compute_tab
         self.compute_tab.events.prox_computed.connect(
             lambda x: self.update_adata(x.adata)
         )
+        self.pch_plot = Container()
+        # Higher level plot parameters
+        self.region_key = ComboBox(
+            name="RegionKeys",
+            choices=self.get_categorical_obs_keys,
+            label="region_key",
+        )
+        self.region_key.scrollable = True
+        self.region_key.changed.connect(self.update_obs_helper)
+
+        # TODO; Single metadata for now, multiple later -> to a Select widget
+        self.metadata_key = ComboBox(
+            name="MetadataKeys",
+            choices=self.get_parallel_keys,
+            label="metadata_key",
+        )
+        self.metadata_key.scrollable = True
+
+        self.plot_button = create_widget(
+            name="Plot", widget_type="PushButton", annotation=bool
+        )
+        self.plot_button.changed.connect(self.update_pch_plot)
+        self.pch_plot.extend(
+            [self.region_key, self.metadata_key, self.plot_button]
+        )
         # PLOTS
-        # self.proximity_density_plot = HeatmapPlotCanvas(self.viewer, self)
-        # self.addTab(self.proximity_density_plot, "Proximity Density")
+        self.pch_canvas = ComplexHeatmapPlotCanvas(
+            self.viewer, self)
+        self.pch_plot.native.layout().addWidget(
+            self.pch_canvas
+        )
+        self.addTab(self.pch_plot.native, "Complex Heatmap")
+
+    def update_pch_plot(self):
+        # Unpack variables
+        data = self.adata.uns[self.PROX_RESULTS_KEY]
+        # indices;
+        
+        # re-instantiate mli
+        data = data.set_index(data.columns[:2].tolist())
+
+        # TODO; Single metadata for now, multiple later -> to a Select widget
+        metadata_keys = self.metadata_key.value
+
+        left_pad = 0.01
+        right_pad = 0.85
+        bottom_pad = 0.1
+        top_pad = 0.95
+
+        self.pch_canvas.plot(
+            data,
+            self.obs_helper,
+            metadata_keys,
+            subplots_adjust=(left_pad, bottom_pad, right_pad, top_pad),
+        )
+
+    def update_obs_helper(self) -> None:
+        region = self.region_key.value
+        if region is not None and self.adata is not None:
+            self.obs_helper = ObsHelper(self.adata, region)
 
     def update_adata(self, adata: AnnData) -> None:
         self.adata = adata
+        self.update_obs_helper()
         # update plot call here
         self.reset_choices()
 
+    def get_parallel_keys(self, widget=None) -> list[str]:
+        """Get the keys of the obs attribute that are parallel keys.
+        These keys are used to group the data in the proximity density results
+        for plotting."""
+        if self.adata is not None or self.obs_helper is not None:
+            return self.obs_helper.parallel_keys
+        else:
+            return []
+            
+    def get_categorical_obs_keys(self, widget=None) -> list[str]:
+        """Returns categorical keys of the obs attribute of the AnnData object.
+        If `adata` is None, returns an empty list."""
+        # Can be obs keys too
+        if self.adata is None:
+            return []
+        else:
+            return [
+                x
+                for x in self.adata.obs.columns
+                if isinstance(self.adata.obs[x].dtype, pd.CategoricalDtype)
+            ]
+
     def reset_choices(self) -> None:
         # reset the contained plot if it contains choices
-        pass
+        self.pch_plot.reset_choices()
 
 
 class ProximityDensityWidget(QTabWidget):
