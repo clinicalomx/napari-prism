@@ -240,7 +240,7 @@ class EditableTable(Table):
     def reverse_drop_key_to_val(value):
         original = [x[0] for x in value]  # first col
         new = [x[1] for x in value]  # rest
-        if original[0] == new[0]: # If same columns,
+        if original[0] == new[0]:  # If same columns,
             new[0] = new[0] + "_new"
         reverse_d = {}
         for v in [original, new]:

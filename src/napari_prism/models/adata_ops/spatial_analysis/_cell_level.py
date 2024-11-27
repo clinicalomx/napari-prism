@@ -334,7 +334,7 @@ def cellular_neighborhoods_sq(
     phenotypes = adata.obs[phenotype].unique().dropna()
 
     conn = adata.obsp[connectivity_key]
-    #row_ix, col_ix = conn.nonzero()
+    # row_ix, col_ix = conn.nonzero()
     # List incase of ragged arr -> i.e. if graph is not symmetric.
     neighbors = [[] for _ in range(conn.shape[0])]
 
@@ -344,9 +344,9 @@ def cellular_neighborhoods_sq(
     #     cix = np.where(row_ix == r)
     #     neighbors[r] = col_ix[cix]
 
-    #speed up with csr row ptrs
+    # speed up with csr row ptrs
     neighbors = [
-        conn.indices[conn.indptr[i]:conn.indptr[i + 1]] 
+        conn.indices[conn.indptr[i] : conn.indptr[i + 1]]
         for i in range(conn.shape[0])
     ]
 

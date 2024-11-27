@@ -496,7 +496,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
             if self.annotation_table:  # reset table
                 self.annotation_table.native.setParent(None)
 
-            #labels = sorted(self.adata.obs[label_name].unique())
+            # labels = sorted(self.adata.obs[label_name].unique())
             labels = self.adata.obs[label_name].cat.categories.tolist()
             tbl = {
                 label_name: labels,
