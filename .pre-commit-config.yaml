@@ -15,7 +15,7 @@ repos:
   #   hooks:
   #     - id: pyproject-fmt
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.3
+    rev: v0.8.1
     hooks:
       - id: ruff
         types_or: [python, pyi, jupyter]
@@ -55,7 +55,7 @@ repos:
 
   # from napari precommit configs
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.3
+    rev: v0.8.1
     hooks:
       - id: ruff
   - repo: https://github.com/psf/black
