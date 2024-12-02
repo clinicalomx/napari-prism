@@ -24,6 +24,12 @@ class TMAImageAnalysisParentWidget(QTabWidget):
         self.viewer = viewer
         self.dearrayer = None
         self.segmenter = None
+
+        # bind viewer selection events such that labels if they do get imported
+        # with annotations
+        self.viewer.layers.selection.events.changed.connect(
+            self.on_selection_change)
+
         # self.general = GeneralMSNapariWidget(self._viewer)
         # self.addTab(self.general.native, "Other")
         init_selected = viewer.layers.selection.active
@@ -89,3 +95,25 @@ class TMAImageAnalysisParentWidget(QTabWidget):
         #        self.measurer.max_width = 475
         self.measurer.max_height = 400
         self.addTab(self.measurer.native, "ExpressionMeasurer")
+
+    def on_selection_change(self):
+        """When layer changes, do the following actions;"""
+        layer = self.viewer.layers.selection.active
+
+        if layer is not None:
+            self._show_shapes_annotations(layer)
+
+    def _show_shapes_annotations(self, layer):
+        # TODO ideally this should maybe be in the shapes metadata or anndata metadata
+        ANNOTATION_LABEL = "tma_label"
+        if (
+            "_columns_df" in layer.metadata
+            and ANNOTATION_LABEL in layer.metadata["_columns_df"]
+        ):
+            annot_label_vals = layer.metadata["_columns_df"][ANNOTATION_LABEL]
+            layer.features[ANNOTATION_LABEL] = annot_label_vals
+
+            layer.text = ANNOTATION_LABEL
+            layer.text.visible = True
+            layer.text.anchor = "upper_left"
+            layer.text.size = 10
