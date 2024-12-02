@@ -658,15 +658,6 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
             label="Select output layer",
         )
 
-        self._show_annotations_button = create_widget(
-            value=False,
-            name="Show annotations",
-            annotation=bool,
-            widget_type="PushButton",
-            options={"enabled": True},
-        )
-        self._show_annotations_button.changed.connect(self.show_annotations)
-
         if self.model is not None:
             self._dearray_button.enabled = True
         else:
@@ -693,25 +684,6 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
                 for x in self.viewer.layers
                 if isinstance(x, napari.layers.shapes.shapes.Shapes)
             ]
-
-    def show_annotations(self):
-        # NOTE: temp solution for annotation labels
-        layer = get_selected_layer(
-            self.viewer, self._output_layer_selection_widget
-        )
-
-        if (
-            "_columns_df" in layer.metadata
-            and "tma_label" in layer.metadata["_columns_df"]
-        ):
-            tma_label_vals = layer.metadata["_columns_df"]["tma_label"]
-            layer.features["tma_label"] = tma_label_vals
-
-            layer.text = "tma_label"
-            layer.text.visible = True
-            layer.text.anchor = "upper_left"
-            layer.text.size = 10
-
 
 class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
     def __init__(
