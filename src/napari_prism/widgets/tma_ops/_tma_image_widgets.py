@@ -670,7 +670,6 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
                 self._ncols_entry,
                 self._dearray_button,
                 self._output_layer_selection_widget,
-                self._show_annotations_button,
             ]
         )
 
