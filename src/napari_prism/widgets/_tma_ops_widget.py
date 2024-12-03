@@ -28,7 +28,8 @@ class TMAImageAnalysisParentWidget(QTabWidget):
         # bind viewer selection events such that labels if they do get imported
         # with annotations
         self.viewer.layers.selection.events.changed.connect(
-            self.on_selection_change)
+            self.on_selection_change
+        )
 
         # self.general = GeneralMSNapariWidget(self._viewer)
         # self.addTab(self.general.native, "Other")

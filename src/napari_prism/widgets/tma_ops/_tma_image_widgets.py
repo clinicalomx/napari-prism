@@ -684,6 +684,7 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
                 if isinstance(x, napari.layers.shapes.shapes.Shapes)
             ]
 
+
 class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
     def __init__(
         self,
