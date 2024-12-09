@@ -1090,6 +1090,11 @@ class TMADearrayer(SingleScaleImageOperations):
         min_sigma = expected_radius_px * (1 - expectation_margin)
         max_sigma = expected_radius_px * (1 + expectation_margin)
 
+        # Add approximation; 1 px radius ~ sqrt(2) sigma
+        denom = np.sqrt(2)
+        min_sigma = min_sigma / denom
+        max_sigma = max_sigma / denom
+
         # Blob detection with blob_dog
         blobs_dog = feature.blob_dog(
             image,
