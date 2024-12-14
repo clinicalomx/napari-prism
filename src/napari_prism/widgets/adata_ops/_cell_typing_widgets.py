@@ -354,33 +354,34 @@ class AnnDataTreeWidget(BaseNapariWidget):
         """Add a new node to the currently selected node in the tree widget. If
         the new node label already exists, it will not be added.
         """
-        matches = self.adata_tree_widget.findItems(
-            node_label, Qt.MatchRecursive, 0
-        )
+        # matches = self.adata_tree_widget.findItems(
+        #     node_label, Qt.MatchRecursive, 0
+        # )
         parent_node = self.adata_tree_widget.currentItem()
-        if matches == []:
-            # tree_attrs set in init
-            node = AnnDataNodeQT(
-                adata_slice,
-                obs_labels,
-                node_label,
-                parent=parent_node,
-            )
+        # TODO only if matches are on the same level
+        #if matches == []:
+        # tree_attrs set in init
+        node = AnnDataNodeQT(
+            adata_slice,
+            obs_labels,
+            node_label,
+            parent=parent_node,
+        )
 
-            # Update the children of the parent_node with this new child node
-            parent_node.update_children()
-            self.save_node(parent_node)
+        # Update the children of the parent_node with this new child node
+        parent_node.update_children()
+        self.save_node(parent_node)
 
-            if save:
-                self.save_node(node)
+        if save:
+            self.save_node(node)
 
-            self.events.node_changed(
-                table_to_add=str(node.store.stem), table_to_remove=None
-            )
+        self.events.node_changed(
+            table_to_add=str(node.store.stem), table_to_remove=None
+        )
 
-            # Lock the parent renaming system
-            parent_node.make_uneditable()
-            self.adata_tree_widget.expandAll()
+        # Lock the parent renaming system
+        parent_node.make_uneditable()
+        self.adata_tree_widget.expandAll()
 
     def show_context_menu(self, pos: QPoint) -> None:
         """Show the context menu at the user cursor when right-clicking on a
@@ -493,8 +494,8 @@ class AnnDataTreeWidget(BaseNapariWidget):
         layout.addLayout(button_layout)
 
         def _create_annotation_table(label_name):
-            if self.annotation_table:  # reset table
-                self.annotation_table.native.setParent(None)
+            # if self.annotation_table:  # reset table
+            #     self.annotation_table.native.setParent(None)
 
             # labels = sorted(self.adata.obs[label_name].unique())
             labels = self.adata.obs[label_name].cat.categories.tolist()
@@ -540,6 +541,12 @@ class AnnDataTreeWidget(BaseNapariWidget):
         self.adata.obs[new_obs] = self.adata.obs[new_obs].astype("category")
 
         self.update_model(self.adata)
+
+        # if new_obs is a column existing, propagate iwth new finer labels
+        self.adata_tree_widget.currentItem().backpropagate_obs_to_parents(
+            new_obs
+        )
+
         if self.annotation_table_popout:
             self.annotation_table = None
             self.annotation_table_popout.close()

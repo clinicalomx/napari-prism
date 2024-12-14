@@ -2118,16 +2118,16 @@ class TMASegmenter(MultiScaleImageOperations):
                 )
                 global_seg_mask = results["masks"][i].astype(np.int32)
                 transformation_sequence = Sequence(transformations)
-                seg_table = pd.DataFrame(
-                    index=range(1, 1 + global_seg_mask.max())
-                )
-                seg_table = seg_table.reset_index(names=CELL_INDEX_LABEL)
-                seg_table["tma_label"] = "global"
-                str_index = seg_table[CELL_INDEX_LABEL].astype(str) + "_global"
-                seg_table.index = str_index.values
-                seg_table["lyr"] = self.image_name + "_labels"
+            #     seg_table = pd.DataFrame(
+            #         index=range(1, 1 + global_seg_mask.max())
+            #     )
+            #     seg_table = seg_table.reset_index(names=CELL_INDEX_LABEL)
+            #     seg_table["tma_label"] = "global"
+            #     str_index = seg_table[CELL_INDEX_LABEL].astype(str) + "_global"
+            #     seg_table.index = str_index.values
+            #     seg_table["lyr"] = self.image_name + "_labels"
 
-            seg_table["tma_label"] = seg_table["tma_label"].astype("category")
+            # seg_table["tma_label"] = seg_table["tma_label"].astype("category")
 
             self.add_label(
                 global_seg_mask,
@@ -2138,15 +2138,15 @@ class TMASegmenter(MultiScaleImageOperations):
                 # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
             )
 
-            self.add_table(
-                seg_table,
-                "labels_expression",
-                write_element=True,
-                # TODO: future -> seg_table["tma_label"].unique().tolist()
-                region=self.image_name + "_labels",  # or none
-                region_key="lyr",
-                instance_key=CELL_INDEX_LABEL,
-            )
+            # self.add_table(
+            #     seg_table,
+            #     "labels_expression",
+            #     write_element=True,
+            #     # TODO: future -> seg_table["tma_label"].unique().tolist()
+            #     region=self.image_name + "_labels",  # or none
+            #     region_key="lyr",
+            #     instance_key=CELL_INDEX_LABEL,
+            # )
 
 
 class TMAMeasurer(MultiScaleImageOperations):
@@ -2176,8 +2176,6 @@ class TMAMeasurer(MultiScaleImageOperations):
     def measure_labels(
         self,
         labels: DataArray,  # Instance Labels
-        parent_anndata: ad.AnnData,
-        exported_table_name: str,
         tiling_shapes: gpd.GeoDataFrame | None = None,
         extended_properties: bool = False,
         intensity_mode: Literal["mean", "median"] = "mean",
@@ -2187,8 +2185,6 @@ class TMAMeasurer(MultiScaleImageOperations):
 
         Args:
             labels: The labels to measure. Usually the cell segmentation masks.
-            parent_anndata: The parent AnnData object.
-            exported_table_name: The name of the table to export.
             tiling_shapes: The tiling shapes to use.
             extended_properties: If True, includes extended properties.
             intensity_mode: The intensity mode to use. Options: "mean",
@@ -2249,6 +2245,13 @@ class TMAMeasurer(MultiScaleImageOperations):
                 properties,
                 intensity_mode,
             )
+            intensities.index = intensities.index + 1  # 1-indexed
+            obs_like.index = obs_like.index + 1
+            intensities.index = intensities.index.astype(str) + "_" + "global"
+            obs_like.index = obs_like.index.astype(str) + "_" + "global"
+            obs_like["tma_label"] = "global"
+            obs_like["tma_label"] = obs_like["tma_label"].astype("category")
+
 
         # Tiled regionprops
         else:
@@ -2273,6 +2276,8 @@ class TMAMeasurer(MultiScaleImageOperations):
                     )
                 )
 
+            tile_labels = tiling_shapes["tma_label"].values
+
             # TODO: parallelisable? tiles above are list of Dask arrays..
             # NOTE: may not be due to non-seriable functions of regionprops..
             intensity_tables = []
@@ -2284,19 +2289,26 @@ class TMAMeasurer(MultiScaleImageOperations):
                     properties,
                     intensity_mode,
                 )
+                sub_obs_like["tma_label"] = tile_labels[i]
+                sub_intensities.index = sub_intensities.index + 1
+                sub_obs_like.index = sub_obs_like.index + 1
+                sub_intensities.index = (
+                    sub_intensities.index.astype(str) + "_" + tile_labels[i]
+                    )
+                sub_obs_like.index = (
+                    sub_obs_like.index.astype(str) + "_" + tile_labels[i]
+                )
                 intensity_tables.append(sub_intensities)
                 obs_tables.append(sub_obs_like)
 
             # Merge tables
             intensities = pd.concat(intensity_tables)
-            intensities = intensities.reset_index(drop=True)
-            intensities.index = intensities.index + 1  # 1-indexed
-
             obs_like = pd.concat(obs_tables)
             obs_like = obs_like.rename(columns={"label": CELL_INDEX_LABEL})
-            obs_like.index = obs_like[CELL_INDEX_LABEL].values
 
         # Consolidate results
+        obs_like["lyr"] = self.image_name + "_labels"
+        obs_like["tma_label"] = obs_like["tma_label"].astype("category")
         # Extract channel information from the intensity image, assumed to be
         # our dataarray
         channel_names = intensity_image.coords["c"].values
@@ -2305,17 +2317,7 @@ class TMAMeasurer(MultiScaleImageOperations):
             lambda x: channel_map[int(x.split("-")[-1])]
         )  # convert intensity_*-0 to DAPI, etc.
 
-        # Check if every cell / obj is measured
-        assert intensities.shape[0] == parent_anndata.shape[0]
-        assert obs_like.shape[0] == parent_anndata.shape[0]
-        # Inherit
-        previous_obs = parent_anndata.obs
-        previous_uns = parent_anndata.uns
-
-        merged_obs = previous_obs.merge(
-            obs_like, how="inner", on=CELL_INDEX_LABEL
-        )
-        merged_obs = merged_obs.rename(
+        obs_like = obs_like.rename(
             columns={
                 "centroid-0": "centroid_x",
                 "centroid-1": "centroid_y",
@@ -2323,18 +2325,25 @@ class TMAMeasurer(MultiScaleImageOperations):
         )
 
         new_var = pd.DataFrame(
-            index=pd.Series(intensities.columns, name="Protein")
+            index=pd.Series(intensities.columns, name="Marker")
         )
         new_var["intensity_mode"] = intensity_mode
 
         adata = ad.AnnData(
             intensities.values,
-            obs=merged_obs,
-            obsm={"spatial": merged_obs[["centroid_x", "centroid_y"]].values},
+            obs=obs_like,
+            obsm={"spatial": obs_like[["centroid_x", "centroid_y"]].values},
             var=new_var,
-            uns=previous_uns,
         )
 
-        adata_parsed = TableModel.parse(adata)
+        # adata_parsed = TableModel.parse(adata)
 
-        self.overwrite_element(self.sdata, adata_parsed, exported_table_name)
+        self.add_table(
+            adata,
+            "labels_expression",
+            write_element=True,
+            # TODO: future -> seg_table["tma_label"].unique().tolist()
+            region=self.image_name + "_labels",  # or none
+            region_key="lyr",
+            instance_key=CELL_INDEX_LABEL,
+        )

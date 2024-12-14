@@ -1051,7 +1051,11 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
 
             translate = [x for x in transforms if isinstance(x, Translation)]
             if translate != []:
+                axes = translate[0].axes
                 translate = translate[0].translation
+                if axes[0] == "y":
+                    translate = translate[::-1]
+
                 data_sd["geometry"] = data_sd["geometry"].translate(*translate)
 
         scale = self.get_multiscale_image_scales()[self.scale_index]
@@ -1245,7 +1249,11 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
 
             translate = [x for x in transforms if isinstance(x, Translation)]
             if translate != []:
+                axes = translate[0].axes
                 translate = translate[0].translation
+                if axes[0] == "y":
+                    translate = translate[::-1]
+
                 data_sd["geometry"] = data_sd["geometry"].translate(*translate)
 
         labels = get_selected_layer(
@@ -1254,8 +1262,6 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
 
         self.model.measure_labels(
             labels=labels.data,
-            parent_anndata=self.model.sdata[labels.name + "_expression"],
-            exported_table_name=labels.name + "_expression",  # TODO: widget
             tiling_shapes=data_sd,
             extended_properties=self._extended_properties_toggle.value,
             intensity_mode=self._intensity_mode_selection.value,

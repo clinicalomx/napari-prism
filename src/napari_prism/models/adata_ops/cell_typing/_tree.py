@@ -173,6 +173,30 @@ class AnnDataNodeQT(QTreeWidgetItem):
             collection.extend(child.collect_all_children())
         return collection
 
+    def backpropagate_obs_to_parents(self, obs):
+        """Makes parents inherit obs from self."""
+        parent = self.parent()
+        if parent is not None and obs in parent.adata.obs.columns:
+            self.backpropagate_obs(parent, obs)
+            if parent.parent() is not None:
+                parent.backpropagate_obs_to_parents(obs)
+
+    def backpropagate_obs(self, parent, obs):
+        """Makes parents inherit obs from self."""
+        parent_obs = parent.adata.obs
+        child_obs = self.adata.obs
+        # Propagation of child obs to parent
+        parent_obs[obs] = parent_obs[obs].astype(str)
+        child_labels = child_obs[obs]
+        non_null = child_labels[
+            (child_labels.notnull()) & 
+            (child_labels != "nan") & 
+            (child_labels != "")
+        ]
+        parent_obs.loc[non_null.index, obs] = child_labels[non_null.index]
+        parent_obs[obs] = parent_obs[obs].astype("category")
+        parent.adata.obs = parent_obs
+
     # Directive -> Remerge on new obs
     def inherit_child_obs(self, child, log_steps) -> None:
         if log_steps:
@@ -192,25 +216,25 @@ class AnnDataNodeQT(QTreeWidgetItem):
                 right_index=True,
             )
 
-        # Check for nan columns to fill raggedly
-        has_na = parent_obs.columns[parent_obs.isna().any()]
-        if has_na.any():
-            for c in has_na:
-                s = parent_obs[c]
-                na_indices = s[s.isna()].index
+        # # Check for nan columns to fill raggedly
+        # has_na = parent_obs.columns[parent_obs.isna().any()]
+        # if has_na.any():
+        #     for c in has_na:
+        #         s = parent_obs[c]
+        #         na_indices = s[s.isna()].index
 
-                if (
-                    c in child_obs.columns
-                    # Check that parent is indeed a full subset of child
-                    and len(na_indices) >= child_obs.shape[0]
-                    # Check that all new values in subset cover NaNs only
-                    and all(child_obs.index.isin(na_indices))
-                ):
-                    # Reset cats
-                    to_add = child_obs[c].copy().astype(str)
-                    parent_obs[c] = parent_obs[c].astype(str)
-                    parent_obs.loc[na_indices, c] = to_add
-                    parent_obs[c] = parent_obs[c].astype("category")
+        #         if (
+        #             c in child_obs.columns
+        #             # Check that parent is indeed a full subset of child
+        #             and len(na_indices) >= child_obs.shape[0]
+        #             # Check that all new values in subset cover NaNs only
+        #             and all(child_obs.index.isin(na_indices))
+        #         ):
+        #             # Reset cats
+        #             to_add = child_obs[c].copy().astype(str)
+        #             parent_obs[c] = parent_obs[c].astype(str)
+        #             parent_obs.loc[na_indices, c] = to_add
+        #             parent_obs[c] = parent_obs[c].astype("category")
 
         self.adata.obs = parent_obs
 
@@ -221,7 +245,7 @@ class AnnDataNodeQT(QTreeWidgetItem):
     def inherit_children_obs(self, log_steps=False) -> None:
         """Preorder Traversal"""
         # Traverse each child,
-        children = self.collect_all_children()
+        children = self.collect_children()
         if len(children) > 0:
             for child in children:
                 # Base case

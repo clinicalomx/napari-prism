@@ -403,14 +403,16 @@ def cellular_neighborhoods_sq(
 
         # enrichment scores;
         distances_to_centroids = kmeans_instance.cluster_centers_
-        frequencies = total_neighbor_counts.astype(bool).mean(axis=0).values
+        #frequencies = total_neighbor_counts.astype(bool).mean(axis=0).values
+        frequencies = dummies[total_neighbor_counts.columns].mean(axis=0).values
         num = distances_to_centroids + frequencies
         norm = (distances_to_centroids + frequencies).sum(
             axis=1, keepdims=True
         )
         score = np.log2(num / norm / frequencies)
         score_df = pd.DataFrame(
-            score, columns=pd.Index(phenotypes, name=phenotype)
+            score, 
+            columns=pd.Index(total_neighbor_counts.columns, name=phenotype)
         )
         score_df.index.name = "CN_index"
 

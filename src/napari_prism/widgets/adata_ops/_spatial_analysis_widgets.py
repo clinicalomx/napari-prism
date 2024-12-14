@@ -323,7 +323,7 @@ class NolanPlotWidget(QTabWidget):
         if self.choose_K.value is not None:
             k = self.choose_K.value
             data = self.adata.obsm["cn_labels"][str(k)]
-            self.adata.obs[f"cns_k{k}"] = data
+            self.adata.obs[f"cns_k{k}"] = data.astype("category")
             self.events.adata_changed(adata=self.adata)
 
     def update_adata(self, adata: AnnData) -> None:
