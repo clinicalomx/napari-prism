@@ -39,7 +39,8 @@ from spatialdata.transformations import (
     Translation,
     get_transformation_between_coordinate_systems,
 )
-from xarray import DataArray, DataTree
+from datatree.datatree import DataTree
+from xarray import DataArray#, DataTree
 
 from napari_prism.constants import (
     CELL_INDEX_LABEL,

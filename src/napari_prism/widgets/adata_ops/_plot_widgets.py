@@ -58,7 +58,7 @@ class GeneralMPLWidget(BaseNapariMPLWidget):
             self._plot(*args, **kwargs)
 
         self.canvas.draw_idle()
-        self.canvas.draw()
+        #self.canvas.draw()
 
         if subplots_adjust is not None:
             left, right, bottom, top = subplots_adjust
@@ -66,7 +66,7 @@ class GeneralMPLWidget(BaseNapariMPLWidget):
             self.canvas.figure.subplots_adjust(
                 left=left, right=right, bottom=bottom, top=top
             )
-            self.canvas.draw()
+        self.canvas.draw()
 
     def clear(self) -> None:
         """Clear the current contained figure and axes."""
@@ -123,7 +123,7 @@ class HistogramPlotCanvas(GeneralMPLWidget):
         if self.lower_vline is not None:
             self.lower_vline.set_xdata([lower_bound])
             self.lower_vline_annot.set_x(lower_bound - 0.01)
-            self.lower_vline_annot.set_text(lower_bound_label)
+            self.lower_vline_annot.setcol_cluster_text(lower_bound_label)
 
         if self.upper_vline is not None:
             self.upper_vline.set_xdata([upper_bound])
@@ -389,7 +389,8 @@ class ComplexHeatmapPlotCanvas(GeneralMPLWidget):
 
         hm = pch.ClusterMapPlotter(
             data,
-            col_cluster=True,
+            row_cluster=False,
+            col_cluster=False,
             col_dendrogram=True,
             top_annotation=metadata_annotation,
             cmap="viridis",
