@@ -82,6 +82,7 @@ Distributed under the terms of the [MIT] license,
 If you encounter any problems, please [file an issue] along with a detailed description.
 
 ## Known Issues
+
 Adding shapes like `tma_envelopes` may cause segmentation faults (https://github.com/napari/napari/issues/6709). A workaround is to uninstall triangle (`pip uninstall triangle`)
 
 ## Citation

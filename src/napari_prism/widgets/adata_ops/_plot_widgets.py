@@ -58,7 +58,7 @@ class GeneralMPLWidget(BaseNapariMPLWidget):
             self._plot(*args, **kwargs)
 
         self.canvas.draw_idle()
-        #self.canvas.draw()
+        # self.canvas.draw()
 
         if subplots_adjust is not None:
             left, right, bottom, top = subplots_adjust

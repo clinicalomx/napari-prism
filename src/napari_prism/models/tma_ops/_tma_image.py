@@ -18,6 +18,7 @@ import xarray as xr
 from anndata import AnnData
 from cellpose import core, denoise, models
 from dask.array import Array
+from datatree.datatree import DataTree
 from geopandas import GeoDataFrame
 from loguru import logger
 from numpy import dtype, float64, ndarray
@@ -39,8 +40,7 @@ from spatialdata.transformations import (
     Translation,
     get_transformation_between_coordinate_systems,
 )
-from datatree.datatree import DataTree
-from xarray import DataArray#, DataTree
+from xarray import DataArray  # , DataTree
 
 from napari_prism.constants import (
     CELL_INDEX_LABEL,
@@ -2252,7 +2252,6 @@ class TMAMeasurer(MultiScaleImageOperations):
             obs_like["tma_label"] = "global"
             obs_like["tma_label"] = obs_like["tma_label"].astype("category")
 
-
         # Tiled regionprops
         else:
             geoms = tiling_shapes["geometry"]
@@ -2294,7 +2293,7 @@ class TMAMeasurer(MultiScaleImageOperations):
                 sub_obs_like.index = sub_obs_like.index + 1
                 sub_intensities.index = (
                     sub_intensities.index.astype(str) + "_" + tile_labels[i]
-                    )
+                )
                 sub_obs_like.index = (
                     sub_obs_like.index.astype(str) + "_" + tile_labels[i]
                 )

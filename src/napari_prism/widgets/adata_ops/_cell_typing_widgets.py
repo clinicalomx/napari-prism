@@ -359,7 +359,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         # )
         parent_node = self.adata_tree_widget.currentItem()
         # TODO only if matches are on the same level
-        #if matches == []:
+        # if matches == []:
         # tree_attrs set in init
         node = AnnDataNodeQT(
             adata_slice,
@@ -616,9 +616,11 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 )
                 # Recast including nans.
                 self.adata.obs[label_name] = self.adata.obs[label_name].astype(
-                    "str")
+                    "str"
+                )
                 self.adata.obs[label_name] = self.adata.obs[label_name].astype(
-                    "category")
+                    "category"
+                )
 
                 self.update_model(self.adata)
                 self.annotation_table_popout.close()

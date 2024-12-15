@@ -189,9 +189,9 @@ class AnnDataNodeQT(QTreeWidgetItem):
         parent_obs[obs] = parent_obs[obs].astype(str)
         child_labels = child_obs[obs]
         non_null = child_labels[
-            (child_labels.notnull()) & 
-            (child_labels != "nan") & 
-            (child_labels != "")
+            (child_labels.notnull())
+            & (child_labels != "nan")
+            & (child_labels != "")
         ]
         parent_obs.loc[non_null.index, obs] = child_labels[non_null.index]
         parent_obs[obs] = parent_obs[obs].astype("category")
