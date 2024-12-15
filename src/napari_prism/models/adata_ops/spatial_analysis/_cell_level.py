@@ -337,7 +337,7 @@ def cellular_neighborhoods_sq(
     if k_kmeans is None:
         k_kmeans = [10]
 
-    #phenotypes = adata.obs[phenotype].unique().dropna()
+    # phenotypes = adata.obs[phenotype].unique().dropna()
 
     conn = adata.obsp[connectivity_key]
     # row_ix, col_ix = conn.nonzero()
