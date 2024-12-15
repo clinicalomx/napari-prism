@@ -538,6 +538,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
         self.adata.obs[new_obs] = self.adata.obs[original_obs].map(
             dict(zip(original_labels, new_labels, strict=False))
         )
+        self.adata.obs[new_obs] = self.adata.obs[new_obs].astype("str")
         self.adata.obs[new_obs] = self.adata.obs[new_obs].astype("category")
 
         self.update_model(self.adata)
@@ -611,8 +612,13 @@ class AnnDataTreeWidget(BaseNapariWidget):
             # Then add a confirm widget
             def _csv_obs_mapping():
                 self.adata.obs = self.adata.obs.merge(
-                    csv_df, on=label_name, how="right"
+                    csv_df, on=label_name, how="left"
                 )
+                # Recast including nans.
+                self.adata.obs[label_name] = self.adata.obs[label_name].astype(
+                    "str")
+                self.adata.obs[label_name] = self.adata.obs[label_name].astype(
+                    "category")
 
                 self.update_model(self.adata)
                 self.annotation_table_popout.close()

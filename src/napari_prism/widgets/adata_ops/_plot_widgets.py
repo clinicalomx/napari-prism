@@ -123,7 +123,7 @@ class HistogramPlotCanvas(GeneralMPLWidget):
         if self.lower_vline is not None:
             self.lower_vline.set_xdata([lower_bound])
             self.lower_vline_annot.set_x(lower_bound - 0.01)
-            self.lower_vline_annot.setcol_cluster_text(lower_bound_label)
+            self.lower_vline_annot.set_text(lower_bound_label)
 
         if self.upper_vline is not None:
             self.upper_vline.set_xdata([upper_bound])
