@@ -63,9 +63,9 @@ To run [cellpose] on the GPU, install the [CUDA version of PyTorch](https://pyto
 
 To start using `napari-prism`, please see the [tutorials](https://napari-prism.readthedocs.io/en/latest/notebooks/getting_started.html#):
 
--   [Getting started](https://napari-prism.readthedocs.io/en/latest/notebooks/getting_started.html)
--   To learn how to interactively analyse raw .qptiff TMAs, see [TMA Image Analysis](https://napari-prism.readthedocs.io/en/latest/notebooks/tma_usage.html)
--   To learn how to interactively analyse AnnData-contained SpatialData objects, see [Anndata Analysis](https://napari-prism.readthedocs.io/en/latest/notebooks/adata_usage.html)
+- [Getting started](https://napari-prism.readthedocs.io/en/latest/notebooks/getting_started.html)
+- To learn how to interactively analyse raw .qptiff TMAs, see [TMA Image Analysis](https://napari-prism.readthedocs.io/en/latest/notebooks/tma_usage.html)
+- To learn how to interactively analyse AnnData-contained SpatialData objects, see [Anndata Analysis](https://napari-prism.readthedocs.io/en/latest/notebooks/adata_usage.html)
 
 ## Contributing
 
