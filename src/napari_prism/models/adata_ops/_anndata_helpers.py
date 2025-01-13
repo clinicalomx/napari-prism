@@ -1,3 +1,5 @@
+from typing import Literal
+
 import pandas as pd
 
 
@@ -7,6 +9,8 @@ class ObsHelper:
         "Valid aggregation functions: \n\t"
         "sum, max, min, first, last, mean, median."
     )
+    CATEGORICAL_HANDLES = ["category_counts", "category_proportions"]
+    NUMERICAL_HANDLES = ["summarise", "bin", "widen"]
     """
     Obs Helper for retrieving metadata with common indexes relative to a
     specified parent column.
@@ -15,6 +19,12 @@ class ObsHelper:
     def __init__(self, adata, base_column):
         self.adata = adata
         self.base_column = base_column
+
+        #: Key Relations of base_columns to every other column in adata.obs
+        self.parallel_keys = None
+        self.super_keys = None
+        self.categorical_keys = None
+        self.numerical_keys = None
         self._set_groupby_df(base_column)
         self._set_column_relations()
         self._log_column_dtypes()
@@ -109,7 +119,7 @@ class ObsHelper:
             # Directive A) Categorical;
             def _get_super_key_categorical(groupby_obj, column, skey_handle):
                 # Directive 1: Rows = base, Columns = each category in column, Values = Counts of that category per base.
-                if skey_handle in ["category_counts", "category_proportions"]:
+                if skey_handle in self.CATEGORICAL_HANDLES:
                     vals = groupby_obj[column].value_counts().unstack(column)
                     if skey_handle == "category_proportions":
                         vals = vals.div(vals.sum(axis=1), axis=0)
@@ -166,7 +176,10 @@ class ObsHelper:
                                 raise ValueError(self.AGGREGATION_ERROR)
 
                     agg_func = _get_aggregation_function(aggregation_function)
-                    return agg_func(groupby_obj[column])
+                    output_df = agg_func(groupby_obj[column])
+                    # Rename column to specify the aggregation performed
+                    output_df.name = f"{aggregation_function}_{column}"
+                    return output_df
 
                 # Sub-Directive B3) Numerical Widened -> Restricted to annotation boxplots/scatterplots etc.
                 def _widen_numerics(groupby_obj, column):
@@ -174,6 +187,11 @@ class ObsHelper:
                     return pd.DataFrame(grouped.tolist(), index=grouped.index)
 
                 # Handle numerical sub-directives
+                if skey_handle not in self.NUMERICAL_HANDLES:
+                    raise ValueError(
+                        "Unsupported skey handle for numerical superkey column"
+                    )
+
                 if skey_handle == "summarise":
                     return _summarise_numerics(
                         groupby_obj, column, aggregation_function
@@ -246,6 +264,126 @@ class ObsHelper:
             columns=[x + "_col" for x in metadata_df.columns.names],
             index=metadata_df.columns,
         )
+
+    # More user-friendly functions
+    def get_category_counts(
+        self, categorical_column: str | list[str]
+    ) -> pd.DataFrame:
+        """
+        Counts the number of cells of a given category or categories for
+        each sample (`self.base_column`).
+
+        Args:
+            categorical_column: .obs columns to to compute proportions for.
+
+        Returns:
+            pd.DataFrame with the count data where each instance of
+            `self.base_column` as indexing rows, and columns as the category or
+            categories in `categorical_column`. If multiple categories were
+            given, then the columns are MultiIndexed.
+        """
+        return self.get_metadata_df(
+            categorical_column, skey_handle="category_counts"
+        )
+
+    def get_category_proportions(
+        self, categorical_column: str | list[str], normalisation_column=None
+    ) -> pd.DataFrame:
+        """
+        Computes the proportion of cells of a given category or categories for
+        each sample (`self.base_column`).
+
+        Args:
+            categorical_column: .obs columns to to compute proportions for.
+            normalisation_column: .obs column to normalise by. Defaults to None.
+                If `normalisation_column` is given, then it normalises by the
+                total number of cells in each category of that
+                `normalisation_column` rather the total number of cells.
+
+        Returns:
+            pd.DataFrame with the proportions data where each instance of
+            `self.base_column` as indexing rows, and columns as the category or
+            categories in `categorical_column`. If multiple categories were
+            given, then the columns are MultiIndexed.
+        """
+        df = self.get_metadata_df(
+            categorical_column, skey_handle="category_proportions"
+        )
+        if normalisation_column is not None and isinstance(
+            categorical_column, list
+        ):
+            column_indexer = df.columns.names.index(normalisation_column)
+            indexer_totals = df.T.groupby(level=column_indexer).sum()
+            df = df.div(indexer_totals, level=column_indexer, axis=1)
+
+        return df
+
+    def get_numerical_summarised(
+        self,
+        numerical_column: str,
+        aggregation_function: Literal[
+            "min", "max", "sum", "mean", "median", "first", "last"
+        ],
+    ) -> pd.DataFrame:
+        """
+        Summarises the values of a numerical column for each sample
+        (`self.base_column`).
+
+        Args:
+            numerical_column: .obs column to summarise.
+            aggregation_function: Aggregation function to apply to the
+                numerical column. One of ["min", "max", "sum", "mean",
+                "median", "first", "last"].
+
+        Returns:
+            pd.DataFrame with the summarised data where each instance of
+            `self.base_column` as indexing rows, and column as the
+            summarised numerical column, relabelled as
+            "{aggregation_function}_{numerical_column}".
+        """
+
+        return self.get_metadata_df(
+            numerical_column,
+            skey_handle="summarise",
+            aggregation_function=aggregation_function,
+        )
+
+    def get_numerical_binned(
+        self, numerical_column: str, bins: list[int]
+    ) -> pd.DataFrame:
+        """
+        Counts the number of cells belonging to each bin of a numerical variable
+        for each sample (`self.base_column`).
+
+        Args:
+            numerical_column: .obs column to bin.
+            bins: List of numerical values defining the bin boundaries. Must be
+                monotonic and have at least two elements.
+
+        Returns:
+            pd.DataFrame with the count data where each instance of
+            `self.base_column` as indexing rows, and columns as the bin
+            categories. The bin categories are defined by the bin boundaries
+            with the last bin being open-ended.
+        """
+        return self.get_metadata_df(
+            numerical_column, skey_handle="bin", bins=bins
+        )
+
+    def get_numerical_widened(self, numerical_column) -> pd.DataFrame:
+        """
+        Gets every numerical observation for each sample (`self.base_column`).
+
+        Args:
+            numerical_column: .obs column to widen.
+
+        Returns:
+            pd.DataFrame with the numerical data where each instance of
+            `self.base_column` as indexing rows, and columns as every numerical
+            observation for each sample. Columns denote the nth observation
+            for each sample. Produces many NaNs.
+        """
+        return self.get_metadata_df(numerical_column, skey_handle="widen")
 
 
 class ObsAnnotator:
