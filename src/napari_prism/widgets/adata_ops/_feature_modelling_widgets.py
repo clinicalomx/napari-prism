@@ -2,7 +2,6 @@ import napari
 from anndata import AnnData
 from magicgui.widgets import ComboBox
 
-from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 
 
@@ -11,7 +10,6 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
         super().__init__(viewer, adata)
-        self.helper = ObsAggregator(adata)
 
     def create_parameter_widgets(self) -> None:
         """Create widgets for exposing the functions of the ObsAggregator class."""
