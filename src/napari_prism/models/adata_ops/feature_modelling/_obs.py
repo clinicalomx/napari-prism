@@ -1,9 +1,11 @@
+"""Classes for generating sample-level AnnData objects."""
+
 from typing import Literal
 
 import pandas as pd
 
 
-class ObsHelper:
+class ObsAggregator:
     AGGREGATION_ERROR = (
         "`aggregation_function` not supported or none provided. \n"
         "Valid aggregation functions: \n\t"
@@ -14,6 +16,8 @@ class ObsHelper:
     """
     Obs Helper for retrieving metadata with common indexes relative to a
     specified parent column.
+
+    Useful for generating sample-level metrics from cell-level metadata.
     """
 
     def __init__(self, adata, base_column):
@@ -35,13 +39,13 @@ class ObsHelper:
 
     @staticmethod
     def get_cardinality_df(adata, base_column):
-        groupby_df = ObsHelper.get_groupby_df(adata, base_column)
+        groupby_df = ObsAggregator.get_groupby_df(adata, base_column)
         return groupby_df.nunique()
 
     @staticmethod
     def get_parallel_keys(adata, base_column):
         """Get the keys which have a 1 or N : 1 relation with base_column."""
-        cardinality_df = ObsHelper.get_cardinality_df(adata, base_column)
+        cardinality_df = ObsAggregator.get_cardinality_df(adata, base_column)
         oto = (
             cardinality_df.sum() <= cardinality_df.shape[0]
         )  # If less then, then NaNs
@@ -59,7 +63,7 @@ class ObsHelper:
         """Get the keys which have a N : 1 relation with base_column.
         i.e. The values in these keys are repeated across multiple
         base_column instances."""
-        parallel_keys = ObsHelper.get_parallel_keys(adata, base_column)
+        parallel_keys = ObsAggregator.get_parallel_keys(adata, base_column)
         return adata.obs[parallel_keys].columns[
             adata.obs[parallel_keys].nunique()
             < adata.obs[base_column].nunique()
@@ -68,19 +72,19 @@ class ObsHelper:
     @staticmethod
     def get_super_keys(adata, base_column):
         """Get the keys which have a 1 : N relation with base_column."""
-        cardinality_df = ObsHelper.get_cardinality_df(adata, base_column)
+        cardinality_df = ObsAggregator.get_cardinality_df(adata, base_column)
         oto = cardinality_df.sum() > cardinality_df.shape[0]
         return cardinality_df.columns[oto]
 
     def _set_groupby_df(self, base_column):
-        self.groupby_df = ObsHelper.get_groupby_df(self.adata, base_column)
+        self.groupby_df = ObsAggregator.get_groupby_df(self.adata, base_column)
 
     def _set_column_relations(self):
         """Based on cardinality_df, will get keys which have a 1:1 relation."""
-        self.parallel_keys = ObsHelper.get_parallel_keys(
+        self.parallel_keys = ObsAggregator.get_parallel_keys(
             self.adata, self.base_column
         )
-        self.super_keys = ObsHelper.get_super_keys(
+        self.super_keys = ObsAggregator.get_super_keys(
             self.adata, self.base_column
         )
 
@@ -117,7 +121,7 @@ class ObsHelper:
         else:
             if isinstance(additional_groupby, str):
                 additional_groupby = [additional_groupby]
-            groupby_obj = ObsHelper.get_groupby_df(
+            groupby_obj = ObsAggregator.get_groupby_df(
                 self.adata, [self.base_column] + additional_groupby
             )
 
@@ -470,6 +474,16 @@ class ObsHelper:
 
 
 class ObsAnnotator:
+    """
+    Obs Annotator for labelling cell metadata with from various annotation
+    sources (dictionaries, spatial queries, etc).
+    """
+
+    def spatial_annotation(self):
+        """https://spatialdata.scverse.org/en/stable/tutorials/notebooks/
+        notebooks/examples/napari_rois.html
+        """
+
     def annotate_column(self, column_name, mapping, condition, subset):
         pass
 

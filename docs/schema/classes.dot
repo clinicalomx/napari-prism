@@ -49,7 +49,7 @@ charset="utf-8"
 "napari-prism.widgets._adata_ops_widget.NolanPlotWidget" [color="black", fontcolor="black", label=<NolanPlotWidget>, shape="record", style="solid"];
 "napari-prism.widgets._adata_ops_widget.NolanWidget" [color="black", fontcolor="black", label=<NolanWidget>, shape="record", style="solid"];
 "napari-prism.models.adata_ops.feature_modelling._obs.ObsAnnotator" [color="black", fontcolor="black", label=<ObsAnnotator>, shape="record", style="solid"];
-"napari-prism.models.adata_ops.feature_modelling._obs.ObsHelper" [color="black", fontcolor="black", label=<ObsHelper>, shape="record", style="solid"];
+"napari-prism.models.adata_ops.feature_modelling._obs.ObsAggregator" [color="black", fontcolor="black", label=<ObsAggregator>, shape="record", style="solid"];
 "napari-prism.readers._readers.PCFLoader" [color="black", fontcolor="black", label=<PCFLoader>, shape="record", style="solid"];
 "napari-prism.readers._readers.PSPLoader" [color="black", fontcolor="black", label=<PSPLoader>, shape="record", style="solid"];
 "napari-prism.widgets._adata_ops_widget.PreprocessingWidget" [color="black", fontcolor="black", label=<PreprocessingWidget>, shape="record", style="solid"];

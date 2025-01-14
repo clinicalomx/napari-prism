@@ -13,7 +13,7 @@ from qtpy.QtWidgets import QWidget
 
 from napari_prism import pp, tl
 from napari_prism.constants import CELL_INDEX_LABEL, DEFAULT_DIVERGENT_CMAP
-from napari_prism.models.adata_ops.feature_modelling._obs import ObsHelper
+from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._plot_widgets import GeneralMPLWidget
 
@@ -581,7 +581,7 @@ class ScanpyFunctionWidget(AnnDataOperatorWidget):
 
         else:
             available_batch_keys = list(
-                ObsHelper.get_duplicated_keys(self.adata, CELL_INDEX_LABEL)
+                ObsAggregator.get_duplicated_keys(self.adata, CELL_INDEX_LABEL)
             )
             return available_batch_keys
 

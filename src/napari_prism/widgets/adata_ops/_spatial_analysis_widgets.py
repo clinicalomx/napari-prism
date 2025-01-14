@@ -12,7 +12,7 @@ from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTabWidget
 
 from napari_prism.constants import DEFAULT_DIVERGENT_CMAP
-from napari_prism.models.adata_ops.feature_modelling._obs import ObsHelper
+from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 from napari_prism.models.adata_ops.spatial_analysis._cell_level import (
     cellular_neighborhoods_sq,
     proximity_density,
@@ -656,7 +656,7 @@ class ProximityDensityPlotWidget(QTabWidget):
     def update_obs_helper(self) -> None:
         region = self.region_key.value
         if region is not None and self.adata is not None:
-            self.obs_helper = ObsHelper(self.adata, region)
+            self.obs_helper = ObsAggregator(self.adata, region)
 
     def update_adata(self, adata: AnnData) -> None:
         self.adata = adata
