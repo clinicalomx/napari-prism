@@ -1,5 +1,9 @@
 """Models for time series (survival) data."""
 
+# Utility
+# Binner Method to discretise particular contiuous features as separable
+# curves
+
 # Univariate -> KM
 
 # Multivariate -> Cox PH
