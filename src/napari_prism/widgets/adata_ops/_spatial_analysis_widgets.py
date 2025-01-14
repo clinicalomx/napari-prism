@@ -12,7 +12,7 @@ from napari.utils.events import EmitterGroup
 from qtpy.QtWidgets import QTabWidget
 
 from napari_prism.constants import DEFAULT_DIVERGENT_CMAP
-from napari_prism.models.adata_ops._anndata_helpers import ObsHelper
+from napari_prism.models.adata_ops.feature_modelling._obs import ObsHelper
 from napari_prism.models.adata_ops.spatial_analysis._cell_level import (
     cellular_neighborhoods_sq,
     proximity_density,

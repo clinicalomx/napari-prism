@@ -104,9 +104,22 @@ class ObsHelper:
         )
 
     def get_metadata_df(
-        self, column, *, skey_handle=None, aggregation_function=None, bins=None
+        self,
+        column,
+        *,
+        additional_groupby=None,
+        skey_handle=None,
+        aggregation_function=None,
+        bins=None,
     ):
-        groupby_obj = self.groupby_df
+        if additional_groupby is None:
+            groupby_obj = self.groupby_df
+        else:
+            if isinstance(additional_groupby, str):
+                additional_groupby = [additional_groupby]
+            groupby_obj = ObsHelper.get_groupby_df(
+                self.adata, [self.base_column] + additional_groupby
+            )
 
         def _get_parallel_key(groupby_obj, column):
             groupby_obj = groupby_obj[column]
@@ -147,9 +160,11 @@ class ObsHelper:
                         )
                         return counts
 
-                    return groupby_obj.apply(
+                    output_df = groupby_obj.apply(
                         _bin_and_count, column=column, bins=bins
                     )
+                    output_df.columns.name = f"{column}_counts"
+                    return output_df
 
                 # Sub-Directive B2) Numerical -> Summary per base. (i.e. mean dist {column} per unique_core {base})
                 def _summarise_numerics(
@@ -255,6 +270,11 @@ class ObsHelper:
             if isinstance(result, pd.Series):
                 result = pd.DataFrame(result)
 
+        # Then if additional_groupby is given,
+        # then we need to unstack the additional_groupby to return to sample
+        # based indexing
+        if additional_groupby is not None:
+            result = result.unstack(level=additional_groupby)
         return result
 
     def get_metadata_column(self, metadata_df):
@@ -324,6 +344,7 @@ class ObsHelper:
         aggregation_function: Literal[
             "min", "max", "sum", "mean", "median", "first", "last"
         ],
+        categorical_column: str | list[str] = None,
     ) -> pd.DataFrame:
         """
         Summarises the values of a numerical column for each sample
@@ -334,6 +355,8 @@ class ObsHelper:
             aggregation_function: Aggregation function to apply to the
                 numerical column. One of ["min", "max", "sum", "mean",
                 "median", "first", "last"].
+            categorical_column: .obs column(s) to further group by. Defaults to
+                None.
 
         Returns:
             pd.DataFrame with the summarised data where each instance of
@@ -346,10 +369,16 @@ class ObsHelper:
             numerical_column,
             skey_handle="summarise",
             aggregation_function=aggregation_function,
+            additional_groupby=categorical_column,
         )
 
     def get_numerical_binned(
-        self, numerical_column: str, bins: list[int]
+        self,
+        numerical_column: str,
+        bins: list[int],
+        categorical_column: str | list[str] = None,
+        normalise: bool = False,
+        normalisation_column: str = None,
     ) -> pd.DataFrame:
         """
         Counts the number of cells belonging to each bin of a numerical variable
@@ -359,6 +388,14 @@ class ObsHelper:
             numerical_column: .obs column to bin.
             bins: List of numerical values defining the bin boundaries. Must be
                 monotonic and have at least two elements.
+            categorical_column: .obs column(s) to further group by. Defaults to
+                None.
+            normalise: Whether to normalise the counts by the total number of
+                cells in each sample. Defaults to False.
+            normalisation_column: .obs column to normalise by. Defaults to None.
+                If `normalisation_column` is given, then it normalises by the
+                total number of cells in each category of that
+                `normalisation_column`. normalise must be True for this to work.
 
         Returns:
             pd.DataFrame with the count data where each instance of
@@ -366,9 +403,20 @@ class ObsHelper:
             categories. The bin categories are defined by the bin boundaries
             with the last bin being open-ended.
         """
-        return self.get_metadata_df(
-            numerical_column, skey_handle="bin", bins=bins
+        df = self.get_metadata_df(
+            numerical_column,
+            skey_handle="bin",
+            bins=bins,
+            additional_groupby=categorical_column,
         )
+        if normalise:
+            if normalisation_column is None:
+                df = df.div(df.sum(axis=1), axis=0)
+            else:
+                column_indexer = df.columns.names.index(normalisation_column)
+                indexer_totals = df.T.groupby(level=column_indexer).sum()
+                df = df.div(indexer_totals.T, level=column_indexer, axis=1)
+        return df
 
     def get_numerical_widened(self, numerical_column) -> pd.DataFrame:
         """
@@ -384,6 +432,41 @@ class ObsHelper:
             for each sample. Produces many NaNs.
         """
         return self.get_metadata_df(numerical_column, skey_handle="widen")
+
+    def get_numerical_binned_and_aggregated(
+        self,
+        numerical_column_to_bin: str,
+        numerical_column_to_aggregate: str,
+        bins: list[int],
+        aggregation_function: Literal[
+            "min", "max", "sum", "mean", "median", "first", "last"
+        ],
+        categorical_column: str | list[str] = None,
+    ):
+        numerical_as_category_name = f"binned_{numerical_column_to_bin}"
+        store_adata_obs = self.adata.obs.copy()
+        bin_cells = pd.cut(store_adata_obs[numerical_column_to_bin], bins=bins)
+        bin_cells.name = numerical_as_category_name
+        merged = store_adata_obs.merge(
+            bin_cells, left_index=True, right_index=True
+        )
+        self.adata.obs = merged
+
+        if categorical_column is not None:
+            if isinstance(categorical_column, str):
+                categorical_column = [categorical_column]
+            cats = categorical_column + [numerical_as_category_name]
+        else:
+            cats = numerical_as_category_name
+
+        result = self.get_numerical_summarised(
+            numerical_column_to_aggregate,
+            aggregation_function=aggregation_function,
+            categorical_column=cats,
+        )
+        self.adata.obs = store_adata_obs
+
+        return result
 
 
 class ObsAnnotator:
