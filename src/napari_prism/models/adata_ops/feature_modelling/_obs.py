@@ -106,6 +106,11 @@ class ObsAggregator:
         self.categorical_keys = self.categorical_keys.append(
             categorical_numerics
         )
+        # Exclude self
+        if self.base_column in self.categorical_keys:
+            self.categorical_keys = self.categorical_keys[
+                self.categorical_keys != self.base_column
+            ]
 
     def get_metadata_df(
         self,
@@ -338,7 +343,7 @@ class ObsAggregator:
         ):
             column_indexer = df.columns.names.index(normalisation_column)
             indexer_totals = df.T.groupby(level=column_indexer).sum()
-            df = df.div(indexer_totals, level=column_indexer, axis=1)
+            df = df.div(indexer_totals.T, level=column_indexer, axis=1)
 
         return df
 

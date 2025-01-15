@@ -1,20 +1,237 @@
+from enum import Enum
+
 import napari
 from anndata import AnnData
-from magicgui.widgets import ComboBox
+from magicgui.widgets import ComboBox, Container, Label, Table, create_widget
 
+from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
+
+NULL_CHOICE = "-----"
 
 
 class ObsAggregatorWidget(AnnDataOperatorWidget):
     """Interface for using the ObsAggregator class."""
 
     def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
+        self.latest_result = None  # NOTE: temporary;
+        self.model = None
         super().__init__(viewer, adata)
 
     def create_parameter_widgets(self) -> None:
         """Create widgets for exposing the functions of the ObsAggregator class."""
+        AGGREGATION_FUNCTIONS = [
+            "category_counts",
+            "category_proportions",
+            "numerical_summarised",
+            "numerical_binned",
+            "numerical_widened",
+            "numerical_binned_and_aggregated",
+        ]
+
         self.sample_key = ComboBox(
             name="SampleKey",
-            choices=self.get_categorical_obs_keys,
-            label="Sample-Level Key",
+            choices=super().get_categorical_obs_keys,
+            label="Sample Level Key",
+            nullable=True,
         )
+        self.sample_key.changed.connect(self.update_local_model)
+
+        self.aggregation_functions_selection = ComboBox(
+            value=None,
+            name="Aggregation function",
+            choices=AGGREGATION_FUNCTIONS,
+            nullable=True,
+        )
+        self.aggregation_functions_selection.scrollable = True
+        self.aggregation_functions_selection.changed.connect(
+            self.local_create_parameter_widgets
+        )
+
+        self.aggregation_functions_container = Container()
+
+        self.extend(
+            [
+                self.sample_key,
+                self.aggregation_functions_selection,
+                self.aggregation_functions_container,
+            ]
+        )
+
+    def clear_local_layout(self) -> None:
+        # layout = self.aggregation_functions_container.native.layout()
+        # for _ in range(layout.count() - 1):
+        #     layout.itemAt(1).widget().setParent(None)
+        for x in list(self.aggregation_functions_container):
+            self.aggregation_functions_container.remove(x)
+
+    def get_categorical_obs_keys(self, widget=None):
+        """Overrides parent function"""
+        if self.model is None:
+            return []
+        return list(self.model.categorical_keys)
+
+    def create_category_selection(self, name="Category", choices=None):
+        if choices is None:
+            choices = self.get_categorical_obs_keys()
+
+        return ComboBox(
+            name="Category", choices=choices, label=name, nullable=True
+        )
+
+    def create_multi_category_selection(self, name="Category(s)"):
+        obs = self.get_categorical_obs_keys()
+        Opts = Enum("Obs", obs)
+        iterable_obs = list(Opts)
+        multi_groupby_selection = create_widget(
+            value=[iterable_obs[0]],
+            name=name,
+            widget_type="ListEdit",
+            annotation=list[Opts],
+            options={},
+        )
+        return multi_groupby_selection
+
+    def get_multi_category_selection_choices(self, widget=None):
+        return self.parse_enums(self.category_selection.value)
+
+    def get_normalisation_choices(self, widget=None):
+        choices = self.parse_enums(self.category_selection.value)
+        if (
+            len(set(choices)) == 1
+        ):  # If one, then normalisation with self with produces nans, remove.
+            return []
+        return choices
+
+    def local_create_parameter_widgets(self) -> None:
+        """Create the specific widgets for each aggregation function."""
+        self.clear_local_layout()
+
+        if (
+            self.aggregation_functions_selection.value is not None
+            and self.sample_key.value is not None
+        ):
+            aggregation_function = self.aggregation_functions_selection.value
+
+            if aggregation_function == "category_counts":
+                self.category_selection = self.create_multi_category_selection(
+                    name="Compute for each: "
+                )
+                self.aggregation_functions_container.extend(
+                    [self.category_selection]
+                )
+            elif aggregation_function == "category_proportions":
+                self.category_selection = self.create_multi_category_selection(
+                    name="Compute for each: "
+                )
+                self.category_selection.changed.connect(self.reset_choices)
+
+                self.normalisation_selection = self.create_category_selection(
+                    name="Normalise by: ",
+                    choices=self.get_normalisation_choices,
+                )
+                self.aggregation_functions_container.extend(
+                    [self.category_selection, self.normalisation_selection]
+                )
+            else:
+                print("Unchcked aggregation function")
+
+            self.apply_button = create_widget(
+                name="Apply",
+                widget_type="PushButton",
+                annotation=None,
+                options={},
+            )
+            self.apply_button.changed.connect(self.apply_aggregation_function)
+            self.aggregation_functions_container.extend([self.apply_button])
+
+    def parse_enums(self, enums):
+        """i.e. Parse [<Obs.X: 2>] to [X]"""
+        return [enum.name for enum in enums]
+
+    def apply_aggregation_function(self):
+        """Apply the selected aggregation function."""
+        if (
+            self.aggregation_functions_selection.value is not None
+            and self.model is not None
+        ):
+            aggregation_function = self.aggregation_functions_selection.value
+            if aggregation_function == "category_counts":
+                selection = self.parse_enums(self.category_selection.value)
+                result = self.model.get_category_counts(
+                    categorical_column=selection,
+                )
+                table_suffix = f"{selection}"
+
+            elif aggregation_function == "category_proportions":
+                selection = self.parse_enums(self.category_selection.value)
+                normalisation_column = self.normalisation_selection.value
+                result = self.model.get_category_proportions(
+                    categorical_column=selection,
+                    normalisation_column=normalisation_column,
+                )
+                table_suffix = (
+                    f"{selection} normalised by {normalisation_column}"
+                )
+            else:
+                print("Unchcked aggregation function")
+
+            self.latest_result = result
+            self.latest_table = Table(
+                value=result,
+                # name=
+            )
+            self.latest_table_label = Label(
+                value=f"{aggregation_function} of " + table_suffix
+            )
+            self.aggregation_functions_container.extend(
+                [
+                    Container(
+                        widgets=[self.latest_table_label, self.latest_table],
+                        layout="vertical",
+                    ),
+                ]
+            )
+
+        # obs = [NULL_CHOICE] + self.get_obs_keys()
+
+        # Opts = Enum("Obs", obs)
+        # iterable_obs = list(Opts)
+        # self.groupby_obs_list = create_widget(
+        #     value = [
+        #         iterable_obs[0]
+        #     ],
+        #     name="Group By",
+        #     widget_type="ListEdit",
+        #     annotation=list[Opts],
+        #     options={}
+        # )
+        # self.groupby_obs_list.changed.connect(self.update_groupby_widget)
+
+        # self.measure_obs_list = create_widget(
+        #     value = [
+        #         iterable_obs[0]
+        #     ],
+        #     name="Measure By",
+        #     widget_type="ListEdit",
+        #     annotation=list[Opts],
+        #     options={}
+        # )
+        # self.extend([
+        #     self.sample_key,
+        #     self.groupby_obs_list,
+        #     self.measure_obs_list
+        # ])
+
+    def update_local_model(self, key):
+        self.model = ObsAggregator(self.adata, base_column=key)
+
+    def launch_binning_widget(self):
+        pass
+
+    def update_measure_widget(self):
+        pass
+
+    def update_groupby_widget(self):
+        """If groupby column is numeric, adds a widget for the user to specify
+        the number of bins."""
