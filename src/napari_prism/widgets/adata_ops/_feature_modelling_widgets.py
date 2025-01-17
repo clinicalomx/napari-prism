@@ -10,6 +10,10 @@ from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 NULL_CHOICE = "-----"
 
 
+class SampleWidget:
+    pass
+
+
 class ObsAggregatorWidget(AnnDataOperatorWidget):
     """Interface for using the ObsAggregator class."""
 
@@ -70,6 +74,20 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
         if self.model is None:
             return []
         return list(self.model.categorical_keys)
+
+    def get_numerical_obs_keys(self, widget=None):
+        """Overrides parent function"""
+        if self.model is None:
+            return []
+        return list(self.model.numerical_keys)
+
+    def create_numerical_selection(self, name="Numerical", choices=None):
+        if choices is None:
+            choices = self.get_numerical_obs_keys()
+
+        return ComboBox(
+            name="Numerical", choices=choices, label=name, nullable=True
+        )
 
     def create_category_selection(self, name="Category", choices=None):
         if choices is None:
@@ -133,6 +151,37 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 self.aggregation_functions_container.extend(
                     [self.category_selection, self.normalisation_selection]
                 )
+
+            elif aggregation_function == "numerical_summarised":
+                self.aggregation_function = ComboBox(
+                    name="Function: ",
+                    choices=[
+                        "mean",
+                        "sum",
+                        "max",
+                        "min",
+                        "first",
+                        "last",
+                        "median",
+                    ],
+                    nullable=False,
+                )
+
+                self.numerical_selection = self.create_numerical_selection(
+                    name="Variable to aggregate: "
+                )
+
+                self.category_selection = self.create_multi_category_selection(
+                    name="Compute for each: "
+                )
+                self.aggregation_functions_container.extend(
+                    [
+                        self.aggregation_function,
+                        self.numerical_selection,
+                        self.category_selection,
+                    ]
+                )
+
             else:
                 print("Unchcked aggregation function")
 
@@ -172,6 +221,18 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 )
                 table_suffix = (
                     f"{selection} normalised by {normalisation_column}"
+                )
+            elif aggregation_function == "numerical_summarised":
+                selection = self.parse_enums(self.category_selection.value)
+                numerical_column = self.numerical_selection.value
+                aggregation_function = self.aggregation_function.value
+                result = self.model.get_numerical_summarised(
+                    numerical_column=numerical_column,
+                    categorical_column=selection,
+                    aggregation_function=aggregation_function,
+                )
+                table_suffix = (
+                    f"{numerical_column} within each " f"{selection}"
                 )
             else:
                 print("Unchcked aggregation function")

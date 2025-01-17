@@ -1,3 +1,5 @@
+"""Spatial analyses which generate metrics at the cell level."""
+
 from itertools import combinations_with_replacement
 from typing import Literal
 

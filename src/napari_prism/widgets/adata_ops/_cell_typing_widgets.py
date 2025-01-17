@@ -405,6 +405,11 @@ class AnnDataTreeWidget(BaseNapariWidget):
             annotate_action.triggered.connect(lambda: self.annotate_node_obs())
             context_menu.addAction(annotate_action)
 
+            # sample aggregation action
+            agg_action = QAction("Aggregate Samples", self.native)
+            agg_action.triggered.connect(lambda: self.aggregate_samples())
+            context_menu.addAction(agg_action)
+
             # delete action. Root node cannot be deleted.
             if item.text(0) != "Root":
                 delete_action = QAction("Delete", self.native)
@@ -455,6 +460,45 @@ class AnnDataTreeWidget(BaseNapariWidget):
                 # if pd.api.types.is_categorical_dtype(self.adata.obs[x])
                 if isinstance(self.adata.obs[x].dtype, pd.CategoricalDtype)
             ]
+
+    def aggregate_samples(self) -> None:
+        """Creates a sample-level AnnData object from a category in the current
+        node's .obs."""
+        popout = QWidget()
+        popout.setWindowTitle("Create Sample-Level Table")
+        # popout.setAttribute(Qt.WA_DeleteOnClose)
+        layout = QVBoxLayout()
+        popout.resize(200, 500)
+        popout.setLayout(layout)
+
+        obs_selection = ComboBox(
+            name="ObsKeys",
+            choices=self.get_categorical_obs_keys,
+            label="Select obs keys to create level",
+            value=None,
+            nullable=True,
+        )
+        obs_selection.scrollable = True
+        layout.addWidget(obs_selection.native)
+
+        button_layout = QHBoxLayout()
+        annotate_button = QPushButton("Create")
+        annotate_button.clicked.connect(
+            lambda: _create_sample_level_anndata(obs_selection.value)
+        )
+        button_layout.addWidget(annotate_button)
+        layout.addLayout(button_layout)
+
+        def _create_sample_level_anndata(label_name):
+            df = pd.DataFrame(index=self.adata.obs[label_name].unique())
+            df.index.name = label_name
+            adata = AnnData(obs=df)
+            self.sdata.tables[label_name] = adata
+
+        cursor_position = QCursor.pos()
+        popout.move(cursor_position)
+        popout.show()
+        self.sample_agg_table_popout = popout
 
     def annotate_node_obs(self) -> None:
         """Launch the table annotation widget for the current node.

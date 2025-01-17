@@ -4,7 +4,7 @@ import napari
 import spatialdata as sd
 from magicgui.widgets import ComboBox
 from napari.utils.events import EmitterGroup
-from qtpy.QtWidgets import QTableWidget, QTabWidget, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 from napari_prism.widgets.adata_ops._cell_typing_widgets import (
@@ -15,6 +15,9 @@ from napari_prism.widgets.adata_ops._cell_typing_widgets import (
     ClusterSearchWidget,
     PreprocessingWidget,
     SubclusteringWidget,
+)
+from napari_prism.widgets.adata_ops._feature_modelling_widgets import (
+    ObsAggregatorWidget,
 )
 from napari_prism.widgets.adata_ops._spatial_analysis_widgets import (
     GraphBuilderWidget,
@@ -114,11 +117,14 @@ class SpatialAnalysisTab(QTabWidget):
         self.addTab(self.proximity_density, "Proximity Density")
 
 
-class FeatureModellingTab(QTableWidget):
+class FeatureModellingTab(QTabWidget):
     def __init__(self, viewer: "napari.viewer.Viewer", adata, tree):
         super().__init__()
         self.viewer = viewer
         self.tree = tree
+
+        self.obs_aggregator = ObsAggregatorWidget(self.viewer, adata)
+        self.addTab(self.obs_aggregator.native, "Obs Aggregator")
 
 
 class AnnDataAnalysisParentWidget(QWidget):
