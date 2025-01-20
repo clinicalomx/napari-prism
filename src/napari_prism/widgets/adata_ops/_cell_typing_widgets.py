@@ -112,6 +112,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
             adata_created=None,
             adata_changed=None,
             node_changed=None,
+            sdata_changed=None,
         )
 
         #: Create the root node for the tree widget.
@@ -123,6 +124,7 @@ class AnnDataTreeWidget(BaseNapariWidget):
 
         #: Annotation table widget for the obs keys.
         self.annotation_table = None
+        self.sample_agg_table_popout = None
 
         #: Create the widgets.
         self.adata_tree_widget = None
@@ -493,7 +495,12 @@ class AnnDataTreeWidget(BaseNapariWidget):
             df = pd.DataFrame(index=self.adata.obs[label_name].unique())
             df.index.name = label_name
             adata = AnnData(obs=df)
+
+            # Put uns of sampling-level
+            adata.uns["grouping_factor"] = label_name
             self.sdata.tables[label_name] = adata
+            self.sample_agg_table_popout.close()
+            self.events.sdata_changed(sdata=self.sdata)
 
         cursor_position = QCursor.pos()
         popout.move(cursor_position)

@@ -3,6 +3,7 @@ from enum import Enum
 import napari
 from anndata import AnnData
 from magicgui.widgets import ComboBox, Container, Label, Table, create_widget
+from spatialdata import SpatialData
 
 from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
@@ -10,17 +11,18 @@ from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 NULL_CHOICE = "-----"
 
 
-class SampleWidget:
-    pass
-
-
 class ObsAggregatorWidget(AnnDataOperatorWidget):
     """Interface for using the ObsAggregator class."""
 
-    def __init__(self, viewer: "napari.viewer.Viewer", adata: AnnData) -> None:
+    def __init__(
+        self,
+        viewer: "napari.viewer.Viewer",
+        adata: AnnData,
+        sdata: SpatialData | None = None,
+    ) -> None:
         self.latest_result = None  # NOTE: temporary;
         self.model = None
-        super().__init__(viewer, adata)
+        super().__init__(viewer, adata=adata, sdata=sdata)
 
     def create_parameter_widgets(self) -> None:
         """Create widgets for exposing the functions of the ObsAggregator class."""
@@ -40,6 +42,7 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
             nullable=True,
         )
         self.sample_key.changed.connect(self.update_local_model)
+        self.sample_key.changed.connect(self.reset_choices)
 
         self.aggregation_functions_selection = ComboBox(
             value=None,
@@ -138,6 +141,7 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 self.aggregation_functions_container.extend(
                     [self.category_selection]
                 )
+
             elif aggregation_function == "category_proportions":
                 self.category_selection = self.create_multi_category_selection(
                     name="Compute for each: "
@@ -182,8 +186,26 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                     ]
                 )
 
+            elif aggregation_function == "numerical_binned":
+                self.numerical_selection = self.create_numerical_selection(
+                    name="Variable to bin: "
+                )
+
+                self.category_selection = self.create_multi_category_selection(
+                    name="Compute for each: "
+                )
+                self.aggregation_functions_container.extend(
+                    [self.numerical_selection, self.category_selection]
+                )
+
             else:
                 print("Unchcked aggregation function")
+
+            self.sample_adata_selection = ComboBox(
+                name="LayersWithContainedAdataSampled",
+                choices=self.get_sampling_adata_in_sdata,
+                label="Select a sample-level AnnData to put results into",
+            )
 
             self.apply_button = create_widget(
                 name="Apply",
@@ -192,7 +214,26 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 options={},
             )
             self.apply_button.changed.connect(self.apply_aggregation_function)
-            self.aggregation_functions_container.extend([self.apply_button])
+            self.aggregation_functions_container.extend(
+                [self.sample_adata_selection, self.apply_button]
+            )
+
+    def get_sampling_adata_in_sdata(self, widget=None):
+        if self.sdata is not None:
+            tables = list(self.sdata.tables.keys())
+            # from tables check if .uns "grouping_factor" exists;
+            tables_with_grouping = [
+                t for t in tables if "grouping_factor" in self.sdata[t].uns
+            ]
+            sample_key = self.sample_key.value
+            if sample_key is not None:
+                tables_with_level = [
+                    t
+                    for t in tables_with_grouping
+                    if self.sdata[t].uns["grouping_factor"] == sample_key
+                ]
+                return tables_with_level
+        return []
 
     def parse_enums(self, enums):
         """i.e. Parse [<Obs.X: 2>] to [X]"""
@@ -222,6 +263,7 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 table_suffix = (
                     f"{selection} normalised by {normalisation_column}"
                 )
+
             elif aggregation_function == "numerical_summarised":
                 selection = self.parse_enums(self.category_selection.value)
                 numerical_column = self.numerical_selection.value
@@ -234,6 +276,7 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 table_suffix = (
                     f"{numerical_column} within each " f"{selection}"
                 )
+
             else:
                 print("Unchcked aggregation function")
 
@@ -245,14 +288,35 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
             self.latest_table_label = Label(
                 value=f"{aggregation_function} of " + table_suffix
             )
-            self.aggregation_functions_container.extend(
-                [
-                    Container(
-                        widgets=[self.latest_table_label, self.latest_table],
-                        layout="vertical",
-                    ),
-                ]
+            self.confirm_button = create_widget(
+                name="Confirm",
+                widget_type="PushButton",
+                annotation=None,
+                options={},
             )
+
+            # def _confirm_aggregation(result):
+            #     output_struct = self.sdata[self.sample_adata_selection.value] #: noqa F841
+
+            self.confirm_button.changed.connect(self._confirm_aggregation)
+
+            table_output = Container(
+                widgets=[
+                    self.latest_table_label,
+                    self.latest_table,
+                    self.confirm_button,
+                ],
+                layout="vertical",
+            )
+            table_output.native.show()
+            # self.aggregation_functions_container.extend(
+            #     [
+            #         Container(
+            #             widgets=[self.latest_table_label, self.latest_table],
+            #             layout="vertical"
+            #         ),
+            #     ]
+            # )
 
         # obs = [NULL_CHOICE] + self.get_obs_keys()
 

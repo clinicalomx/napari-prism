@@ -29,8 +29,9 @@ from napari_prism.widgets.adata_ops._spatial_analysis_widgets import (
 class CellTypingTab(QTabWidget):
     """UI tabs."""
 
-    def __init__(self, viewer: "napari.viewer.Viewer", adata, tree):
+    def __init__(self, viewer: "napari.viewer.Viewer", sdata, adata, tree):
         super().__init__()
+        self.sdata = sdata
         self.viewer = viewer
         self.tree = tree
 
@@ -90,8 +91,9 @@ class CellTypingTab(QTabWidget):
 class SpatialAnalysisTab(QTabWidget):
     """Spatial Analysis classes; 1) Squidpy Wrapper, 2) General Wrapper"""
 
-    def __init__(self, viewer: "napari.viewer.Viewer", adata, tree):
+    def __init__(self, viewer: "napari.viewer.Viewer", sdata, adata, tree):
         super().__init__()
+        self.sdata = sdata
         self.viewer = viewer
         self.tree = tree
 
@@ -118,12 +120,14 @@ class SpatialAnalysisTab(QTabWidget):
 
 
 class FeatureModellingTab(QTabWidget):
-    def __init__(self, viewer: "napari.viewer.Viewer", adata, tree):
+    def __init__(self, viewer: "napari.viewer.Viewer", sdata, adata, tree):
         super().__init__()
         self.viewer = viewer
         self.tree = tree
 
-        self.obs_aggregator = ObsAggregatorWidget(self.viewer, adata)
+        self.obs_aggregator = ObsAggregatorWidget(
+            self.viewer, adata=adata, sdata=sdata
+        )
         self.addTab(self.obs_aggregator.native, "Obs Aggregator")
 
 
@@ -212,19 +216,29 @@ class AnnDataAnalysisParentWidget(QWidget):
             )
         )
 
+        # Should only just be a refresh
+        self.tree.events.sdata_changed.connect(
+            lambda _: self._adata_selection.reset_choices()
+        )
+        self.tree.events.sdata_changed.connect(
+            lambda x: AnnDataOperatorWidget.update_sdata_all_operators(x.sdata)
+        )
+
         # Hotdesk Adata
         adata = self.tree.adata
 
         self.tabs = QTabWidget()
 
-        self.cell_typing_tab = CellTypingTab(viewer, adata, self.tree)
+        self.cell_typing_tab = CellTypingTab(
+            viewer, self.meta_sdata, adata, self.tree
+        )
 
         self.spatial_analysis_tab = SpatialAnalysisTab(
-            viewer, adata, self.tree
+            viewer, self.meta_sdata, adata, self.tree
         )
 
         self.feature_modelling_tab = FeatureModellingTab(
-            viewer, adata, self.tree
+            viewer, self.meta_sdata, adata, self.tree
         )
 
         self.tabs.addTab(self.cell_typing_tab, "Cell Typing")

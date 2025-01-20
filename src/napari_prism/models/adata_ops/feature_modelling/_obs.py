@@ -478,6 +478,10 @@ class ObsAggregator:
         return result
 
 
+class ObsAggregatorAgent:
+    pass
+
+
 class ObsAnnotator:
     """
     Obs Annotator for labelling cell metadata with from various annotation
