@@ -1,10 +1,14 @@
 from enum import Enum
 
 import napari
+import numpy as np
+import pandas as pd
 from anndata import AnnData
 from magicgui.widgets import ComboBox, Container, Label, Table, create_widget
+from napari.utils.events import EmitterGroup
 from spatialdata import SpatialData
 
+from napari_prism.models._utils import overwrite_element
 from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 
@@ -23,6 +27,11 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
         self.latest_result = None  # NOTE: temporary;
         self.model = None
         super().__init__(viewer, adata=adata, sdata=sdata)
+        #: Events for when an anndata object is changed
+        self.events = EmitterGroup(
+            source=self,
+            sdata_changed=None,
+        )
 
     def create_parameter_widgets(self) -> None:
         """Create widgets for exposing the functions of the ObsAggregator class."""
@@ -295,11 +304,6 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 options={},
             )
 
-            # def _confirm_aggregation(result):
-            #     output_struct = self.sdata[self.sample_adata_selection.value] #: noqa F841
-
-            self.confirm_button.changed.connect(self._confirm_aggregation)
-
             table_output = Container(
                 widgets=[
                     self.latest_table_label,
@@ -309,6 +313,78 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 layout="vertical",
             )
             table_output.native.show()
+
+            self.confirm_button.changed.connect(
+                lambda _: _confirm_aggregation(result)
+            )
+            self.confirm_button.changed.connect(
+                lambda _: table_output.native.close()
+            )
+
+            def _confirm_aggregation(result):
+                sample_factor_name = result.index.name
+
+                in_adata = self.sdata[
+                    self.sample_adata_selection.value
+                ].copy()  # self.adata.copy()
+
+                # Common order / index
+                if in_adata.obs.index.name != sample_factor_name:
+                    if sample_factor_name in in_adata.obs.columns:
+                        in_adata.obs = in_adata.obs.set_index(
+                            sample_factor_name
+                        )
+                    else:
+                        raise ValueError(
+                            "Sample factor name not found in AnnData"
+                        )
+
+                feature_struct_ordered = result.loc[in_adata.obs.index]
+                feature_struct_values = feature_struct_ordered.values
+                feature_struct_vars = self.model.get_feature_frame(
+                    feature_struct_ordered
+                )
+                # Check if the i    n_data has existing features
+                if (in_adata.X is not None) and (in_adata.var is not None):
+                    # # Merge only new features
+                    # duplicated_features = feature_struct_vars.index[
+                    #     feature_struct_vars.index.isin(in_adata.var.index)
+                    # ]
+
+                    # Modify feature matrix
+                    merged_X = np.hstack([in_adata.X, feature_struct_values])
+
+                    merged_var = pd.concat(
+                        [
+                            in_adata.var,
+                            feature_struct_vars,
+                        ]
+                    )
+                    merged_var = merged_var.reset_index(drop=True)
+
+                    feature_struct_out = AnnData(
+                        obs=in_adata.obs,
+                        uns=in_adata.uns,
+                        X=merged_X,
+                        var=merged_var,
+                    )
+
+                else:
+                    feature_struct_out = AnnData(
+                        obs=in_adata.obs,
+                        uns=in_adata.uns,
+                        X=feature_struct_values,
+                        var=feature_struct_vars,
+                    )
+
+                self.sdata[self.sample_adata_selection.value] = (
+                    feature_struct_out
+                )
+                overwrite_element(
+                    self.sdata, self.sample_adata_selection.value
+                )
+                self.events.sdata_changed(sdata=self.sdata)
+
             # self.aggregation_functions_container.extend(
             #     [
             #         Container(
@@ -349,7 +425,8 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
         # ])
 
     def update_local_model(self, key):
-        self.model = ObsAggregator(self.adata, base_column=key)
+        if key is not None:
+            self.model = ObsAggregator(self.adata, base_column=key)
 
     def launch_binning_widget(self):
         pass

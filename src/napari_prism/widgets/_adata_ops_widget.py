@@ -128,6 +128,10 @@ class FeatureModellingTab(QTabWidget):
         self.obs_aggregator = ObsAggregatorWidget(
             self.viewer, adata=adata, sdata=sdata
         )
+        # Parse signal to tree
+        self.obs_aggregator.events.sdata_changed.connect(
+            lambda x: self.tree.events.sdata_changed(sdata=x.sdata)
+        )
         self.addTab(self.obs_aggregator.native, "Obs Aggregator")
 
 

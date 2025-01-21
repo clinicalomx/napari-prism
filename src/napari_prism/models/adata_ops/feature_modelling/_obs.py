@@ -35,7 +35,7 @@ class ObsAggregator:
 
     @staticmethod
     def get_groupby_df(adata, base_column):
-        return adata.obs.groupby(base_column, observed=False)
+        return adata.obs.groupby(by=base_column, observed=False)
 
     @staticmethod
     def get_cardinality_df(adata, base_column):
@@ -311,9 +311,17 @@ class ObsAggregator:
             categories in `categorical_column`. If multiple categories were
             given, then the columns are MultiIndexed.
         """
-        return self.get_metadata_df(
+        metric_label = "counts"
+        df = self.get_metadata_df(
             categorical_column, skey_handle="category_counts"
         )
+
+        df.columns = pd.MultiIndex.from_tuples(
+            [(metric_label, *col) for col in df.columns],
+            names=[None, *df.columns.names],
+        )
+
+        df.columns = df.columns.set_names([None, *df.columns.names[1:]])
 
     def get_category_proportions(
         self, categorical_column: str | list[str], normalisation_column=None
@@ -335,6 +343,7 @@ class ObsAggregator:
             categories in `categorical_column`. If multiple categories were
             given, then the columns are MultiIndexed.
         """
+        metric_label = "proportions"
         df = self.get_metadata_df(
             categorical_column, skey_handle="category_proportions"
         )
@@ -344,6 +353,14 @@ class ObsAggregator:
             column_indexer = df.columns.names.index(normalisation_column)
             indexer_totals = df.T.groupby(level=column_indexer).sum()
             df = df.div(indexer_totals.T, level=column_indexer, axis=1)
+            metric_label = f"proportions_norm_by_{normalisation_column}"
+
+        df.columns = pd.MultiIndex.from_tuples(
+            [(metric_label, *col) for col in df.columns],
+            names=[None, *df.columns.names],
+        )
+
+        df.columns = df.columns.set_names([None, *df.columns.names[1:]])
 
         return df
 
@@ -418,6 +435,8 @@ class ObsAggregator:
             bins=bins,
             additional_groupby=categorical_column,
         )
+
+        numerical_metric = f"{numerical_column}_counts"
         if normalise:
             if normalisation_column is None:
                 df = df.div(df.sum(axis=1), axis=0)
@@ -425,6 +444,21 @@ class ObsAggregator:
                 column_indexer = df.columns.names.index(normalisation_column)
                 indexer_totals = df.T.groupby(level=column_indexer).sum()
                 df = df.div(indexer_totals.T, level=column_indexer, axis=1)
+            df.columns = df.columns.rename(
+                {numerical_metric: f"{numerical_column}_proportion"}
+            )
+            numerical_metric = f"{numerical_column}_proportion"
+
+        # Standard format for multi-indexed features
+        df.columns = df.columns.set_names(
+            [f"{numerical_column}_bin", *df.columns.names[1:]]
+        )
+
+        df.columns = pd.MultiIndex.from_tuples(
+            [(numerical_metric, *col) for col in df.columns],
+            names=[None, *df.columns.names],
+        )
+
         return df
 
     def get_numerical_widened(self, numerical_column) -> pd.DataFrame:
@@ -476,6 +510,35 @@ class ObsAggregator:
         self.adata.obs = store_adata_obs
 
         return result
+
+    def get_feature_frame(self, df: pd.DataFrame):
+        """Given the multiindexed columns of metadata dataframes produced by
+        this class, return a single indexed dataframe with the columns as each
+        feature field, and the rows as each feature. Mainly for avoiding long
+        flat features, and makign each feature more interpretable."""
+        multi_indexed_cols = df.columns
+        df = pd.DataFrame(
+            list(df.columns.values),
+            columns=["metric", *df.columns.names[1:]],
+        )
+        # TODO: Then return the flat feature as index
+        level_names = multi_indexed_cols.names
+        factor_separator = "@"
+        level_separator = "$"
+
+        flatten_features = [
+            factor_separator.join(
+                [
+                    f"{name}{level_separator}{value}" if name else str(value)
+                    for name, value in zip(level_names, idx, strict=False)
+                ]
+            )
+            for idx in multi_indexed_cols
+        ]
+        df.index = flatten_features
+        df = df.fillna("NA")
+
+        return df
 
 
 class ObsAggregatorAgent:
