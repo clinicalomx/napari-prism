@@ -273,6 +273,7 @@ class AnnDataAnalysisParentWidget(QWidget):
             #     x.data, napari.layers._multiscale_data.MultiScaleData
             # )
             if isinstance(x.data, napari.layers.Labels)
+            or isinstance(x, napari.layers.shapes.Shapes)  # Accept TMA annots
             and "sdata" in x.metadata
             and x.metadata["sdata"] is not None
             and x.metadata["sdata"].is_backed()
@@ -307,7 +308,12 @@ class AnnDataAnalysisParentWidget(QWidget):
             # and isinstance(
             #     selected.data, napari.layers._multiscale_data.MultiScaleData
             # )
-            and isinstance(selected, napari.layers.Labels)
+            and (
+                isinstance(
+                    selected,
+                    napari.layers.Labels | napari.layers.shapes.Shapes,
+                )
+            )
             and "sdata" in selected.metadata
             and selected.metadata["sdata"] is not None
             and selected.metadata["sdata"].is_backed()

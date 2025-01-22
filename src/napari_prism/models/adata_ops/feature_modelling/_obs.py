@@ -107,10 +107,17 @@ class ObsAggregator:
             categorical_numerics
         )
         # Exclude self
-        if self.base_column in self.categorical_keys:
-            self.categorical_keys = self.categorical_keys[
-                self.categorical_keys != self.base_column
-            ]
+        if isinstance(self.base_column, list):
+            for x in self.base_column:
+                if x in self.categorical_keys:
+                    self.categorical_keys = self.categorical_keys[
+                        self.categorical_keys != x
+                    ]
+        else:
+            if self.base_column in self.categorical_keys:
+                self.categorical_keys = self.categorical_keys[
+                    self.categorical_keys != self.base_column
+                ]
 
     def get_metadata_df(
         self,
@@ -522,6 +529,8 @@ class ObsAggregator:
             columns=["metric", *df.columns.names[1:]],
         )
         # TODO: Then return the flat feature as index
+        # TODO: issue with below is that its not zarr compatible
+        # On write, below index gets converted to ints default
         level_names = multi_indexed_cols.names
         factor_separator = "@"
         level_separator = "$"
