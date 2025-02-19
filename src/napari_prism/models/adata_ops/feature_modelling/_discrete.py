@@ -1,21 +1,19 @@
 """ML Models and statistical methods for characterising discrete labels."""
 
-from typing import Union
+from typing import Literal, Union
 
 import numpy as np
 import pandas as pd
-
-# General Applicable Functions
-# Binary Labels
-# Univariate -> T-Test / Wilcoxon Rank Sum or Mann Whitney U
 import scipy.stats as scstats
 import statsmodels.api as sm
 from anndata import AnnData
+from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
 
 from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 
 
+# Helpers
 def _build_design_matrix(Y_cond, X_cond, G, neighborhood, ct):
     """Builds a design matrix based on multiple conditional probabilities,
     given a `neighborhood` and `ct`,
@@ -86,18 +84,33 @@ def _get_x_y_by_binary_label(
     patient_adata: AnnData,
     feature_column: str | list[str],
     label_column: str,
+    attr: Literal["obs", "X"] = "obs",
     fillna_value: float = 0.0,
 ) -> dict[str, Union[pd.Series, pd.DataFrame, np.ndarray]]:
-    feature_index = patient_adata.var_names.get_loc(feature_column)
-    feature_X = patient_adata.X[:, feature_index]
+    if attr == "X":
+        feature_index = patient_adata.var_names.get_loc(feature_column)
+        feature_X = pd.DataFrame(patient_adata.X[:, feature_index])
+
+    elif attr == "obs":
+        feature_X = patient_adata.obs[feature_column]
+
+    else:
+        raise ValueError("Attribute must be either 'obs' or 'X'.")
+
+    # validate columns as numeric
+    assert pd.api.types.is_numeric_dtype(
+        feature_X
+    ), "Feature column must be numeric."
+
     label_y = patient_adata.obs[label_column]
 
     # Filter out NAN labels;
     non_na_indices = label_y.isna()[~label_y.isna()].index
     label_y = label_y[non_na_indices]
 
-    # Fillnans
-    feature_X = feature_X.fillna(fillna_value)
+    # Filter out NAN features, or fillnas.
+    non_na_feature_indices = feature_X[~feature_X.isna()].index
+    feature_X = feature_X.loc[non_na_feature_indices]
 
     # Assert binary label;
     if not isinstance(label_y, bool):
@@ -112,10 +125,14 @@ def _get_x_y_by_binary_label(
     return {conditions[0]: cond1_X, conditions[1]: cond2_X}
 
 
+# General Applicable Functions
+# Binary Labels
+# Univariate -> T-Test / Wilcoxon Rank Sum or Mann Whitney U
 def difference_of_means_by_binary_label(
     patient_adata: AnnData,
-    feature_column: str | list[str],
+    feature_column: str,  # | list[str],
     label_column: str,
+    attr: Literal["obs", "X"] = "obs",
     fillna_value: float = 0.0,
 ) -> Union[pd.DataFrame, pd.DataFrame]:
     """Calculate the difference of means between two groups.
@@ -127,7 +144,7 @@ def difference_of_means_by_binary_label(
         label_column (str): Column name in .obs of the binary label.
     """
     groups = _get_x_y_by_binary_label(
-        patient_adata, feature_column, label_column, fillna_value
+        patient_adata, feature_column, label_column, attr, fillna_value
     )
     cond1, cond2 = list(groups.keys())
     cond1_X = groups[cond1]
@@ -153,11 +170,11 @@ def difference_of_means_by_binary_label(
 
 def univariate_test_feature_by_binary_label(
     patient_adata: AnnData,
-    feature_column: str | list[str],
+    feature_column: str,  # | list[str],
     label_column: str,
+    attr: Literal["obs", "X"] = "obs",
     parametric: bool = True,
     equal_var: bool = True,
-    fillna_value: float = 0.0,
 ) -> Union[pd.DataFrame, pd.DataFrame]:
     """Perform a univariate test to compare the distribution of a feature
     between two groups.
@@ -165,8 +182,11 @@ def univariate_test_feature_by_binary_label(
     Args:
         patient_adata (AnnData): AnnData object where rows represent patients or
             samples.
-        feature_column (str): Column index in .var of the feature to test.
+        feature_column (str): Column index in .var or column name in .obs to
+            test. Must be numerical.
         label_column (str): Column name in .obs of the binary label.
+        attr (str): Attribute in the AnnData object to extract the features
+            from.
         parametric (bool, optional): Whether to use a parametric test. If True,
             uses a t-test, otherwise uses a mann-whitney U test. Defaults to
             True.
@@ -174,31 +194,20 @@ def univariate_test_feature_by_binary_label(
             to True to perform Student's t-test. If False, perform a Welch's
             t-test.
     """
-    feature_index = patient_adata.var_names.get_loc(feature_column)
-    feature_X = patient_adata.X[:, feature_index]
-    label_y = patient_adata.obs[label_column]
-
-    # Filter out NAN labels;
-    non_na_indices = label_y.isna()[~label_y.isna()].index
-    label_y = label_y[non_na_indices]
-
-    # Fillnans
-    feature_X = feature_X.fillna(fillna_value)
-
-    # Assert binary label;
-    if not isinstance(label_y, bool):
-        assert len(label_y.unique()) == 2, "Label column must be binary."
-
-    conditions = label_y.unique()
-    cond1_indices = label_y[label_y == conditions[0]].index
-    cond2_indices = label_y[label_y == conditions[1]].index
-    cond1_X = feature_X[cond1_indices]
-    cond2_X = feature_X[cond2_indices]
+    groups = _get_x_y_by_binary_label(
+        patient_adata,
+        feature_column,
+        label_column,
+        attr,
+    )
+    cond1, cond2 = list(groups.keys())
+    cond1_X = groups[cond1]
+    cond2_X = groups[cond2]
 
     test = scstats.ttest_ind if parametric else scstats.mannwhitneyu
 
     kwargs = {}
-    if not parametric:
+    if parametric:
         kwargs["equal_var"] = equal_var
 
     statistic, p_value = test(cond1_X, cond2_X, **kwargs)
@@ -208,6 +217,26 @@ def univariate_test_feature_by_binary_label(
 
 # Multivariate -> Logistic Regression
 def logistic_regression_by_binary_label(
+    patient_adata: AnnData,
+    feature_column: str | list[str],
+    label_column: str,
+    fillna_value: float = 0.0,
+    balance_labels: bool = True,
+    penalty: Literal["l1", "l2", "elasticnet"] = "l2",
+    regularization_strength: float = 0.0,
+) -> Union[pd.DataFrame, pd.DataFrame]:
+    class_weight = None
+    if balance_labels:
+        class_weight = "balanced"
+
+    inv_reg_strength = 1.0 - regularization_strength
+
+    logreg = LogisticRegression(  # noqa: F841
+        class_weight=class_weight, C=inv_reg_strength
+    )
+
+
+def logistic_regression_by_multiclass_label(
     patient_adata: AnnData,
     feature_column: str | list[str],
     label_column: str,

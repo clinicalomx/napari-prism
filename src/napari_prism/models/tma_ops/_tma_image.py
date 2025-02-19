@@ -1567,8 +1567,8 @@ class TMADearrayer(SingleScaleImageOperations):
         #     instance_key="tma_label"
         # )
         envelopes.uns["grouping_factor"] = "tma_label"
-        envelopes = envelopes.set_index("tma_label")
-        envelopes["tma_label_col"] = envelopes.index
+        envelopes.obs = envelopes.obs.set_index("tma_label")
+        envelopes.obs["tma_label_col"] = envelopes.obs.index
 
         self.add_table(
             envelopes,

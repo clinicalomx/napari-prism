@@ -302,6 +302,12 @@ class ObsAggregator:
         )
 
     # More user-friendly functions
+    def get_row_counts(self) -> pd.DataFrame:
+        """
+        Get the number of rows within each sample in `self.base_column`.
+        """
+        return self.adata.obs.groupby(self.base_column).size()
+
     def get_category_counts(
         self, categorical_column: str | list[str]
     ) -> pd.DataFrame:
@@ -323,12 +329,19 @@ class ObsAggregator:
             categorical_column, skey_handle="category_counts"
         )
 
-        df.columns = pd.MultiIndex.from_tuples(
-            [(metric_label, *col) for col in df.columns],
-            names=[None, *df.columns.names],
-        )
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = pd.MultiIndex.from_tuples(
+                [(metric_label, *col) for col in df.columns],
+                names=[None, *df.columns.names],
+            )
+        else:
+            df.columns = pd.MultiIndex.from_tuples(
+                [(metric_label, col) for col in df.columns],
+                names=[None, *df.columns.names],
+            )
 
         df.columns = df.columns.set_names([None, *df.columns.names[1:]])
+        return df
 
     def get_category_proportions(
         self, categorical_column: str | list[str], normalisation_column=None
@@ -362,10 +375,16 @@ class ObsAggregator:
             df = df.div(indexer_totals.T, level=column_indexer, axis=1)
             metric_label = f"proportions_norm_by_{normalisation_column}"
 
-        df.columns = pd.MultiIndex.from_tuples(
-            [(metric_label, *col) for col in df.columns],
-            names=[None, *df.columns.names],
-        )
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = pd.MultiIndex.from_tuples(
+                [(metric_label, *col) for col in df.columns],
+                names=[None, *df.columns.names],
+            )
+        else:
+            df.columns = pd.MultiIndex.from_tuples(
+                [(metric_label, col) for col in df.columns],
+                names=[None, *df.columns.names],
+            )
 
         df.columns = df.columns.set_names([None, *df.columns.names[1:]])
 

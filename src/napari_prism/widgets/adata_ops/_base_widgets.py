@@ -78,6 +78,7 @@ class AnnDataOperatorWidget(BaseNapariWidget):
         Args:
             adata: AnnData object to set as the working object.
         """
+        print("Updating model for all operators")
         for instance in cls._instances:
             instance.update_model(adata)
 
