@@ -19,7 +19,7 @@ from spatialdata.transformations import Identity, Scale
 from napari_prism.constants import DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 
 
-class QptiffLoader(ABC):
+class QptiffReader():
     META_ORDER = []
 
     def __init__(self, qptiff_path, *args, **kwargs):
@@ -36,10 +36,6 @@ class QptiffLoader(ABC):
             f"  .image: {self.image}\n"
             f"  .markers\n"
             f"  .marker_info\n"
-            f"  .scan_profile\n"
-            f"  .channel_exposure\n"
-            f"  .unusued_items\n"
-            f"  .wells\n"
         )
         return string
 
@@ -119,25 +115,64 @@ class QptiffLoader(ABC):
                 )
                 self.image = image
 
-    @abstractmethod
     def generate_metadata(self):
-        raise NotImplementedError(
-            "Calling abstract method from abstract class."
+        data = {}
+        for i, page in enumerate(self.page_series):
+            ppm_x, ppm_y = page.get_resolution(5) # tiffile.py -> 5 is the microns tag
+            pandas_series = pd.read_xml(
+                StringIO(page.description), parser="etree"
+            ).stack()
+            pandas_series = pandas_series.droplevel(0)
+            pandas_series["MPP_x"] = 1 / ppm_x #TODO; make colname constant
+            pandas_series["MPP_y"] = 1 / ppm_y #TODO; make colname constant
+            data[i] = pandas_series
+        data_df = pd.DataFrame.from_dict(data, orient="index")
+
+        def _make_cols_unique(df):
+            # byproduct of xml readers; of repeated fields but in different nestings
+            renamer = defaultdict()
+            for column_name in df.columns[
+                df.columns.duplicated(keep=False)
+            ].tolist():
+                if column_name not in renamer:
+                    renamer[column_name] = [column_name + "_0"]
+                else:
+                    renamer[column_name].append(
+                        column_name + "_" + str(len(renamer[column_name]))
+                    )
+            return df.rename(
+                columns=lambda column_name: (
+                    renamer[column_name].pop(0)
+                    if column_name in renamer
+                    else column_name
+                )
+            )
+
+        data_df = _make_cols_unique(data_df)
+
+        self.markers = data_df["Biomarker"].to_list() # Biomarker field should always be in qpi images
+        self.marker_info = data_df
+        self.set_mpp(data_df, "MPP_x", "MPP_y")
+        self.set_channel_map(
+            {v: k for k, v in data_df.Biomarker.to_dict().items()}
         )
 
     # Required attributes; have setters
     def set_channel_map(self, channel_map):
         self.channel_map = channel_map
 
-    def set_scaling_factor(self, scaling_factor):
-        self.scaling_factor = scaling_factor
-
-    def set_markers(self, markers):
-        self.markers = markers
-
-    def set_marker_info(self, marker_info):
-        self.marker_info = marker_info
-        # self.marker_info.index = self.markers # Need markers
+    def set_mpp(self, data_df, mpp_x, mpp_y):
+        if (data_df[mpp_x].nunique() > 1) or (data_df[mpp_y].nunique() > 1):
+            raise NotImplementedError(
+                "Unhandled physical unit calibration for different scaling" \
+                "factors across channel axis."
+            )
+        scaling_x = data_df[mpp_x].mean()
+        scaling_y = data_df[mpp_y].mean()
+        if scaling_x != scaling_y:
+            self.mpp = (scaling_x + scaling_y) / 2
+        else:
+            self.mpp = scaling_x
 
     def to_spatialdata(self, downscale_factors=None):
         """Creates base spatialdata object containing only the multiscale
@@ -150,7 +185,7 @@ class QptiffLoader(ABC):
         transformations["global"] = Identity()
         # transformations["scale0"] = Identity()
         transformations["um"] = Scale(
-            [self.scaling_factor, self.scaling_factor], axes=("x", "y")
+            [self.mpp, self.mpp], axes=("x", "y")
         ).inverse()  # converts pixels to um using qptiff provided metadata for scaling
 
         if downscale_factors == "infer":
@@ -184,68 +219,6 @@ class QptiffLoader(ABC):
 
         return sdata
 
-
-class PCFLoader(QptiffLoader):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def generate_metadata(self):
-        data = {}
-        for i, page in enumerate(self.page_series):
-            pandas_series = pd.read_xml(
-                StringIO(page.description), parser="etree"
-            ).stack()
-            data[i] = pandas_series
-        data_df = pd.DataFrame(data).T
-        data_df.columns = data_df.columns.droplevel(0)
-        scan_profile = pd.read_json(StringIO(data_df["ScanProfile"][0]))
-        channel_exposure = pd.DataFrame(
-            scan_profile["experimentDescription"]["channels"]
-        )
-        unused_items = pd.DataFrame(
-            scan_profile["experimentDescription"]["unusedItems"]
-        )
-        wells = pd.DataFrame(scan_profile["experimentDescription"]["wells"])
-        scan_profile = scan_profile.drop(columns=["experimentDescription"])
-        data_df = data_df.drop(columns=["ScanProfile"])
-
-        def _make_cols_unique(df):
-            # by product of xml readers; of repeated fields but in different nestings
-            renamer = defaultdict()
-            for column_name in df.columns[
-                df.columns.duplicated(keep=False)
-            ].tolist():
-                if column_name not in renamer:
-                    renamer[column_name] = [column_name + "_0"]
-                else:
-                    renamer[column_name].append(
-                        column_name + "_" + str(len(renamer[column_name]))
-                    )
-            return df.rename(
-                columns=lambda column_name: (
-                    renamer[column_name].pop(0)
-                    if column_name in renamer
-                    else column_name
-                )
-            )
-
-        data_df = _make_cols_unique(data_df)
-
-        self.set_markers(data_df["Biomarker"].to_list())
-        self.set_marker_info(data_df)
-        self.set_scaling_factor(data_df["ScaleFactor"].unique()[0])
-        self.set_channel_map(
-            {v: k for k, v in data_df.Biomarker.to_dict().items()}
-        )
-        self.mpp = 1 / self.scaling_factor
-
-        # Misc
-        self.scan_profile = scan_profile
-        self.channel_exposure = channel_exposure
-        self.wells = wells
-        self.unused_items = unused_items
-
-
 def qptiff_reader_function(
     qptiff_path: str | Path, target_path: str | Path | None = None
 ) -> list[tuple[None]]:
@@ -262,7 +235,7 @@ def qptiff_reader_function(
 
     """
     logger.info(f"Converting {qptiff_path} to SpatialData")
-    sdata = PCFLoader(qptiff_path).to_spatialdata()
+    sdata = QptiffReader(qptiff_path).to_spatialdata()
 
     if isinstance(qptiff_path, str):
         qptiff_path = Path(qptiff_path)
