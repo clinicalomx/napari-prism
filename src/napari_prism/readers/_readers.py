@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from io import StringIO
 from pathlib import Path
@@ -12,6 +11,7 @@ import zarr
 from dask.delayed import delayed as dd
 from loguru import logger
 from napari_spatialdata import Interactive
+from ome_types import from_xml
 from spatialdata import SpatialData
 from spatialdata.models import Image2DModel
 from spatialdata.transformations import Identity, Scale
@@ -19,16 +19,12 @@ from spatialdata.transformations import Identity, Scale
 from napari_prism.constants import DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 
 
-class QptiffReader():
-    META_ORDER = []
-
-    def __init__(self, qptiff_path, *args, **kwargs):
+class QptiffReader:
+    def __init__(self, qptiff_path, image_index=0, *args, **kwargs):
         self.qptiff_path = qptiff_path
-        self.load_page_series(qptiff_path, *args, **kwargs)
+        self.load_page_series(qptiff_path, image_index, *args, **kwargs)
         self.generate_metadata()
-        self.image_name = self.reformat_image_name(
-            Path(qptiff_path).absolute().stem
-        )
+        self.image_name = self.reformat_image_name(qptiff_path)
 
     def __str__(self):
         string = (
@@ -43,7 +39,14 @@ class QptiffReader():
         return self.__str__()
 
     def reformat_image_name(self, input_name):
-        return input_name.replace(" ", "_").replace("-", "_")
+        path = Path(input_name)
+        # Remove all path suffixes
+        while path.suffix:
+            path = path.with_suffix("")
+
+        path = path.stem
+        path = path.replace(" ", "_").replace("-", "_")
+        return path
 
     @staticmethod
     def series_to_array(series):
@@ -90,10 +93,14 @@ class QptiffReader():
         shapes = get_shapes(zarr_list)
         return calculate_scaling_factors(shapes)
 
-    def load_page_series(self, qptiff_path, channel_int=None, with_zarr=False):
+    def load_page_series(
+        self, qptiff_path, image_index=0, channel_int=None, with_zarr=False
+    ):
         if with_zarr:
             with tifffile.TiffFile(qptiff_path) as tif:
-                series = tif.series[0]
+                series = tif.series[
+                    image_index
+                ]  # TODO: 0-> Baseline image -> Set as constant
                 self.page_series = series
             zobj = self.load_multiscale_image_with_zarr()
             z = zobj[int(zobj.attrs["multiscales"][0]["datasets"][0]["path"])]
@@ -103,13 +110,14 @@ class QptiffReader():
 
         else:
             with tifffile.TiffFile(qptiff_path) as tif:
-                series = tif.series[0]
+                series = tif.series[
+                    image_index
+                ]  # TODO: 0-> Baseline image -> Set as constant
                 self.page_series = series
                 if channel_int is not None:
                     series = series[channel_int]
 
-                # image = dd(lambda series: series.asarray())(tif)
-                delayed_image = dd(self.series_to_array)(series)
+                delayed_image = dd(lambda x: x.asarray())(series)
                 image = da.from_delayed(
                     delayed_image, dtype=series.dtype, shape=series.shape
                 )
@@ -118,13 +126,20 @@ class QptiffReader():
     def generate_metadata(self):
         data = {}
         for i, page in enumerate(self.page_series):
-            ppm_x, ppm_y = page.get_resolution(5) # tiffile.py -> 5 is the microns tag
-            pandas_series = pd.read_xml(
-                StringIO(page.description), parser="etree"
-            ).stack()
+            ppm_x, ppm_y = page.get_resolution(
+                5
+            )  # tiffile.py -> 5 is the microns tag
+            try:
+                pandas_series = pd.read_xml(
+                    StringIO(page.description), parser="etree"
+                ).stack()
+            except ValueError:
+                pandas_series = pd.read_xml(
+                    StringIO(page.description), parser="etree", xpath="."
+                ).stack()
             pandas_series = pandas_series.droplevel(0)
-            pandas_series["MPP_x"] = 1 / ppm_x #TODO; make colname constant
-            pandas_series["MPP_y"] = 1 / ppm_y #TODO; make colname constant
+            pandas_series["MPP_x"] = 1 / ppm_x  # TODO; make colname constant
+            pandas_series["MPP_y"] = 1 / ppm_y  # TODO; make colname constant
             data[i] = pandas_series
         data_df = pd.DataFrame.from_dict(data, orient="index")
 
@@ -150,21 +165,25 @@ class QptiffReader():
 
         data_df = _make_cols_unique(data_df)
 
-        self.markers = data_df["Biomarker"].to_list() # Biomarker field should always be in qpi images
+        if "Biomarker" not in data_df.columns:
+            self.markers = None
+            self.channel_map = None
+        else:
+            self.markers = data_df[
+                "Biomarker"
+            ].to_list()  # Biomarker field should always be in qpi images
+            self.channel_map = {
+                v: k for k, v in data_df["Biomarker"].to_dict().items()
+            }
+
         self.marker_info = data_df
         self.set_mpp(data_df, "MPP_x", "MPP_y")
-        self.set_channel_map(
-            {v: k for k, v in data_df.Biomarker.to_dict().items()}
-        )
-
-    # Required attributes; have setters
-    def set_channel_map(self, channel_map):
-        self.channel_map = channel_map
+        self.axes = tuple(self.page_series.axes.lower())  # Lower case axes
 
     def set_mpp(self, data_df, mpp_x, mpp_y):
         if (data_df[mpp_x].nunique() > 1) or (data_df[mpp_y].nunique() > 1):
             raise NotImplementedError(
-                "Unhandled physical unit calibration for different scaling" \
+                "Unhandled physical unit calibration for different scaling"
                 "factors across channel axis."
             )
         scaling_x = data_df[mpp_x].mean()
@@ -185,7 +204,7 @@ class QptiffReader():
         transformations["global"] = Identity()
         # transformations["scale0"] = Identity()
         transformations["um"] = Scale(
-            [self.mpp, self.mpp], axes=("x", "y")
+            [1 / self.mpp, 1 / self.mpp], axes=("x", "y")
         ).inverse()  # converts pixels to um using qptiff provided metadata for scaling
 
         if downscale_factors == "infer":
@@ -204,7 +223,7 @@ class QptiffReader():
         # OME-NGFF
         image = Image2DModel.parse(
             self.image,
-            dims=("c", "y", "x"),
+            dims=self.axes,
             chunks=(1, 5120, 5120),
             transformations=transformations,
             c_coords=self.markers,
@@ -218,6 +237,7 @@ class QptiffReader():
         # tables={self.image_name + "_adata": adata_table})
 
         return sdata
+
 
 def qptiff_reader_function(
     qptiff_path: str | Path, target_path: str | Path | None = None
@@ -259,6 +279,171 @@ def qptiff_reader_function(
 
     # Then launch TMA plugins
     return [(None,)]
+
+
+class OmeTiffReader:
+    def __init__(self, ome_tiff_path, image_index=0, *args, **kwargs):
+        self.ome_tiff_path = ome_tiff_path
+        self.load_page_series(ome_tiff_path, image_index, *args, **kwargs)
+        self.generate_metadata(image_index)
+        self.image_name = self.reformat_image_name(ome_tiff_path)
+
+    def load_page_series(
+        self, qptiff_path, image_index=0, channel_int=None, with_zarr=False
+    ):
+        if with_zarr:
+            with tifffile.TiffFile(qptiff_path) as tif:
+                series = tif.series[
+                    image_index
+                ]  # TODO: 0-> Baseline image -> Set as constant
+                self.page_series = series
+            zobj = self.load_multiscale_image_with_zarr()
+            z = zobj[int(zobj.attrs["multiscales"][0]["datasets"][0]["path"])]
+            self.image = da.from_zarr(
+                z
+            )  # for z in data] # Can parse these as ImageModel2D's (multi)
+
+        else:
+            with tifffile.TiffFile(qptiff_path) as tif:
+                series = tif.series[
+                    image_index
+                ]  # TODO: 0-> Baseline image -> Set as constant
+                self.page_series = series
+                if channel_int is not None:
+                    series = series[channel_int]
+
+                delayed_image = dd(lambda x: x.asarray())(series)
+                image = da.from_delayed(
+                    delayed_image, dtype=series.dtype, shape=series.shape
+                )
+                self.image = image
+                self.ome_meta_obj = from_xml(tif.ome_metadata)
+
+    def set_mpp(self, data_df, mpp_x, mpp_y):
+        if (data_df[mpp_x].nunique() > 1) or (data_df[mpp_y].nunique() > 1):
+            raise NotImplementedError(
+                "Unhandled physical unit calibration for different scaling"
+                "factors across channel axis."
+            )
+        scaling_x = data_df[mpp_x].mean()
+        scaling_y = data_df[mpp_y].mean()
+        if scaling_x != scaling_y:
+            self.mpp = (scaling_x + scaling_y) / 2
+        else:
+            self.mpp = scaling_x
+
+    def reformat_image_name(self, input_name):
+        path = Path(input_name)
+        # Remove all path suffixes
+        while path.suffix:
+            path = path.with_suffix("")
+
+        path = path.stem
+        path = path.replace(" ", "_").replace("-", "_")
+        return path
+
+    def generate_metadata(self, image_index=0):
+        selected_image_meta = self.ome_meta_obj.images[image_index]
+        init_df = (
+            pd.read_xml(StringIO(selected_image_meta.to_xml()), parser="etree")
+            .stack()
+            .droplevel(0)
+        )
+
+        init_df = pd.DataFrame(init_df).T
+
+        # Extracrt channel info;
+        channel_data = {}
+        for i, channel in enumerate(selected_image_meta.pixels.channels):
+            channel_data[i] = (
+                pd.read_xml(
+                    StringIO(channel.to_xml()), parser="etree", xpath="."
+                )
+                .stack()
+                .droplevel(0)
+            )
+        channel_df = pd.DataFrame(channel_data).T
+
+        # Physical units
+        res_data = {}
+        for i, page in enumerate(self.page_series):
+            ppm_x, ppm_y = page.get_resolution(5)
+            res_data[i] = pd.Series(
+                {
+                    "MPP_x": 1 / ppm_x,
+                    "MPP_y": 1 / ppm_y,
+                }
+            )
+        res_df = pd.DataFrame(res_data).T
+        channel_df = pd.concat([channel_df, res_df], axis=1)
+        merged_df = pd.concat([init_df] * len(channel_df), ignore_index=True)
+        data_df = pd.concat(
+            [merged_df, channel_df.reset_index(drop=True)], axis=1
+        )
+
+        # Name is Biomarker in ome tiff;s;
+        if "Name" not in data_df.columns:
+            self.markers = None
+            self.channel_map = None
+        else:
+            self.markers = data_df[
+                "Name"
+            ].to_list()  # Biomarker field should always be in qpi images
+            self.channel_map = {
+                v: k for k, v in data_df["Name"].to_dict().items()
+            }
+
+        self.marker_info = data_df
+        # self.set_mpp(data_df, "MPP_x", "MPP_y")
+        self.mpp_x = data_df["MPP_x"].mean()
+        self.mpp_y = data_df["MPP_y"].mean()
+
+        self.axes = tuple(self.page_series.axes.lower())  # Lower case axes
+
+    def to_spatialdata(self, downscale_factors=None):
+        """Creates base spatialdata object containing only the multiscale
+        from qptiff data."""
+        # downscale_factors determine pyramidal downscaling of qptiff img;
+        # /2 -> /4 -> /8 -> /16
+        if downscale_factors is None:
+            downscale_factors = DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
+        transformations = {}
+        transformations["global"] = Identity()
+        # transformations["scale0"] = Identity()
+        transformations["um"] = Scale(
+            [1 / self.mpp_x, 1 / self.mpp_y], axes=("x", "y")
+        ).inverse()  # converts pixels to um using qptiff provided metadata for scaling
+
+        if downscale_factors == "infer":
+            downscale_factors = self.infer_scales_from_qptiff()
+
+        self.downscale_factors = downscale_factors  # used to match multiscaling of main image for fullscale images produced
+        # # For each downscaling factor, provide a coordinate scale with respect to global px coord.
+        # prev_s = 1
+        # for i, s in enumerate(downscale_factors):
+        #     i += 1
+        #     ss = s*prev_s
+        #     transformations[f"ds_{(2**i)}x"] = Scale([ss, ss], axes=("x", "y")).inverse()
+        #     prev_s = ss
+
+        # Parse full image with transformations and names
+        # OME-NGFF
+        image = Image2DModel.parse(
+            self.image,
+            dims=self.axes,
+            chunks=(1, 5120, 5120),
+            transformations=transformations,
+            c_coords=self.markers,
+            scale_factors=downscale_factors,
+        )  # Passing scale factors with tuples -> MultiscaleSpatialImage
+
+        # Finally the spatialdata that represents the qptiff file
+        sdata = SpatialData(
+            images={self.image_name: image},
+        )  # ,
+        # tables={self.image_name + "_adata": adata_table})
+
+        return sdata
 
 
 class PrismInteractive(Interactive):

@@ -2102,11 +2102,11 @@ class TMASegmenter(MultiScaleImageOperations):
             # Tiling shapes is none,
             else:
                 logger.info(
-                    f"Segmenting entirety of {len(self.image_Name)}",
+                    f"Segmenting entirety of {len(self.image_name)}",
                     flush=True,
                 )
                 results = self.cellpose_segmentation(
-                    image=input_image,
+                    image=input_image.data,
                     model_type=model_type,
                     channels=input_channels_cellpose,
                     channel_axis=channel_axis,
