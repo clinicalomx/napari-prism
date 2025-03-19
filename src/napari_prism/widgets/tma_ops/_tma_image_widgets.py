@@ -802,7 +802,12 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             value=0.0,
             name="Cell Probability Threshold",
             annotation=float,
-            options={"min": -6, "step": 0.01, "max": 6.0},
+            options={
+                "min": -6,
+                "step": 0.01,
+                "max": 6.0,
+                "tooltip": ("Decrease if undersegmenting in dim areas."),
+            },
             widget_type="FloatSlider",
         )
 
@@ -810,7 +815,15 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             value=0.4,
             name="Flow Threshold",
             annotation=float,
-            options={"min": 0.0, "step": 0.01, "max": 1.0},
+            options={
+                "min": 0.0,
+                "step": 0.01,
+                "max": 1.0,
+                "tooltip": (
+                    "Decrease if segmentation shapes are unexpected, increase"
+                    " if undersegmenting."
+                ),
+            },
             widget_type="FloatSlider",
         )
 

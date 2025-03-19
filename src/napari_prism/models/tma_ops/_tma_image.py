@@ -2011,7 +2011,7 @@ class TMASegmenter(MultiScaleImageOperations):
                     flow_threshold=flow_threshold,
                     custom_model=custom_model,
                     denoise_model=denoise_model,
-                    progress=True,
+                    # progress=True,
                     **kwargs,
                 )
 
@@ -2099,10 +2099,10 @@ class TMASegmenter(MultiScaleImageOperations):
                 seg_table = pd.concat(local_tables)
                 seg_table[CELL_INDEX_LABEL] = range(1, 1 + seg_table.shape[0])
 
-            # Tiling shapes is none,
+            # Tiling shapes is none -> Single output
             else:
                 logger.info(
-                    f"Segmenting entirety of {len(self.image_name)}",
+                    f"Segmenting entirety of {self.image_name}",
                     flush=True,
                 )
                 results = self.cellpose_segmentation(
@@ -2116,10 +2116,10 @@ class TMASegmenter(MultiScaleImageOperations):
                     flow_threshold=flow_threshold,
                     custom_model=custom_model,
                     denoise_model=denoise_model,
-                    progress=True,
+                    # progress=True,
                     **kwargs,
                 )
-                global_seg_mask = results["masks"][i].astype(np.int32)
+                global_seg_mask = results["masks"].astype(np.int32)
                 transformation_sequence = Sequence(transformations)
             #     seg_table = pd.DataFrame(
             #         index=range(1, 1 + global_seg_mask.max())

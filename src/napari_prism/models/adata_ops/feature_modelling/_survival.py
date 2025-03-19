@@ -51,6 +51,7 @@ def kaplan_meier(
     event_column: str,
     time_column: str,
     stratifier: str = None,
+    **kwargs,
 ) -> np.ndarray:
     survival = parse_survival_columns(adata, event_column, time_column)
 
@@ -68,6 +69,8 @@ def kaplan_meier(
                 survival[g_mask.values]["event"],
                 survival[g_mask.values]["time"],
                 conf_type="log-log",
+                time_enter=np.zeros_like(survival[g_mask.values]["time"]),
+                **kwargs,
             )
     else:
         results["all"] = kaplan_meier_estimator(
@@ -127,7 +130,7 @@ def plot_kaplan_meier(
             step="post",
             **style,
         )
-        ax.set_ylim(0, 1)
+        ax.set_ylim(0, 1.05)
         ax.set_xlim(0 - 1, max_fives + 1)
         ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
         ax.set_ylabel(ylabel)
