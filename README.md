@@ -26,7 +26,7 @@ PRISM uses [spatialdata] as the core data framework, allowing for:
 
 The package was designed to be used completely within the [napari] application and therefore require little to no knowledge of Python programming. Documentation for usage via the API is currently in progress.
 
-## Version Controlled Dependencies
+## Requirements
 
 ```
 python==3.10
