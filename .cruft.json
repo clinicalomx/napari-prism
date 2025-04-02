@@ -1,11 +1,11 @@
 {
   "template": "https://github.com/scverse/cookiecutter-scverse",
-  "commit": "b76a83fb58c1d057a7db248be00bd7d634dabe8c",
-  "checkout": null,
+  "commit": "94ef9fb6f9ad8cfe65a3d9575679c03c80c49cd1",
+  "checkout": "v0.5.0",
   "context": {
     "cookiecutter": {
-      "project_name": "prism",
-      "package_name": "prism",
+      "project_name": "napari-prism",
+      "package_name": "napari-prism",
       "project_description": "tba",
       "author_full_name": "Rafael Tubelleza",
       "author_email": "rafaelrtubelleza@gmail.com",
@@ -14,15 +14,29 @@
       "license": "MIT License",
       "ide_integration": true,
       "_copy_without_render": [
-        ".github/workflows/test_and_deploy.yaml",
+        ".github/workflows/build.yaml",
+        ".github/workflows/test.yaml",
         "docs/_templates/autosummary/**.rst"
+      ],
+      "_exclude_on_template_update": [
+        "CHANGELOG.md",
+        "LICENSE",
+        "README.md",
+        "docs/api.md",
+        "docs/index.md",
+        "docs/notebooks/example.ipynb",
+        "docs/references.bib",
+        "docs/references.md",
+        "src/**",
+        "tests/**"
       ],
       "_render_devdocs": false,
       "_jinja2_env_vars": {
         "lstrip_blocks": true,
         "trim_blocks": true
       },
-      "_template": "https://github.com/scverse/cookiecutter-scverse"
+      "_template": "https://github.com/scverse/cookiecutter-scverse",
+      "_commit": "94ef9fb6f9ad8cfe65a3d9575679c03c80c49cd1"
     }
   },
   "directory": null

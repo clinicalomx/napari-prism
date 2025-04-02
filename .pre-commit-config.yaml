@@ -6,16 +6,17 @@ default_stages:
   - pre-push
 minimum_pre_commit_version: 2.16.0
 repos:
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
+  - repo: https://github.com/biomejs/pre-commit
+    rev: v1.9.4
     hooks:
-      - id: prettier
-  # - repo: https://github.com/tox-dev/pyproject-fmt
-  #   rev: "v2.5.0"
-  #   hooks:
-  #     - id: pyproject-fmt
+      - id: biome-format
+        exclude: ^\.cruft\.json$ # inconsistent indentation with cruft - file never to be modified manually.
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: v2.5.1
+    hooks:
+      - id: pyproject-fmt
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.3
+    rev: v0.11.2
     hooks:
       - id: ruff
         types_or: [python, pyi, jupyter]
@@ -44,31 +45,3 @@ repos:
           Fix the merge conflicts manually and remove the .rej files.
         language: fail
         files: '.*\.rej$'
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: check-docstring-first
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-        exclude: ^\.napari-hub/.*
-      - id: check-yaml # checks for correct yaml syntax for github actions ex.
-
-  # from napari precommit configs
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.3
-    hooks:
-      - id: ruff
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-  - repo: https://github.com/tlambert03/napari-plugin-checks
-    rev: v0.3.0
-    hooks:
-      - id: napari-plugin-checks
-  # https://mypy.readthedocs.io/en/stable/
-  # you may wish to add this as well!
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.9.0
-  #   hooks:
-  #     - id: mypy

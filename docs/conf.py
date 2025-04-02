@@ -5,7 +5,6 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 # -- Path setup --------------------------------------------------------------
-import os
 import sys
 from datetime import datetime
 from importlib.metadata import metadata
@@ -13,19 +12,19 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "extensions"))
-sys.path.insert(0, os.path.abspath("../src"))
+
 
 # -- Project information -----------------------------------------------------
 
 # NOTE: If you installed your project in editable mode, this might be stale.
 #       If this is the case, reinstall it to refresh the metadata
-info = metadata("prism")  # Local name -> prism
+info = metadata("napari-prism")
 project_name = info["Name"]
 author = info["Author"]
-copyright = f"{datetime.now():%Y}, {author}."  # noqa A001
+copyright = f"{datetime.now():%Y}, {author}."
 version = info["Version"]
 urls = dict(pu.split(", ") for pu in info.get_all("Project-URL"))
-repository_url = urls["Source Code"]  # Repo name -> napari-prism
+repository_url = urls["Source"]
 
 # The full version, including alpha/beta/rc tags
 release = info["Version"]
@@ -37,8 +36,8 @@ needs_sphinx = "4.0"
 
 html_context = {
     "display_github": True,  # Integrate GitHub
-    "github_user": "clinicalomx",
-    "github_repo": project_name,
+    "github_user": "rtubelleza",
+    "github_repo": "project-name",
     "github_version": "main",
     "conf_py_path": "/docs/",
 }
@@ -69,9 +68,7 @@ default_role = "literal"
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = False
-napoleon_use_rtype = (
-    True  # having a separate entry generally helps readability
-)
+napoleon_use_rtype = True  # having a separate entry generally helps readability
 napoleon_use_param = True
 myst_heading_anchors = 6  # create anchors for h1-h6
 myst_enable_extensions = [
@@ -98,21 +95,7 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
     "scanpy": ("https://scanpy.readthedocs.io/en/stable/", None),
-    "squidpy": ("https://squidpy.readthedocs.io/en/latest/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "geopandas": ("https://geopandas.org/en/stable/", None),
-    "xarray": ("https://docs.xarray.dev/en/stable/", None),
-    "datatree": ("https://datatree.readthedocs.io/en/latest/", None),
-    "dask": ("https://docs.dask.org/en/latest/", None),
-    "napari": ("https://napari.org/stable/", None),
-    "spatialdata": (
-        "https://scverse-spatialdata.readthedocs.io/en/latest/",
-        None,
-    ),
-    "napari-spatialdata": (
-        "https://spatialdata.scverse.org/projects/napari/en/latest/",
-        None,
-    ),
 }
 
 # List of patterns, relative to source directory, that match files and
@@ -146,5 +129,3 @@ nitpick_ignore = [
     # you can add an exception to this list.
     #     ("py:class", "igraph.Graph"),
 ]
-
-qt_documentation = "PyQt5"
