@@ -1,5 +1,10 @@
 """.pp module. Public API functions for preprocsssing AnnData objects."""
 
+from .models.adata_ops.cell_typing._augmentation import (
+    add_obs_as_var,
+    subset_adata_by_obs_category,
+    subset_adata_by_var,
+)
 from .models.adata_ops.cell_typing._preprocessing import (
     arcsinh,
     fill_na,
@@ -30,4 +35,7 @@ __all__ = [
     "scale",
     "percentile",
     "neighbors",
+    "add_obs_as_var",
+    "subset_adata_by_var",
+    "subset_adata_by_obs_category",
 ]

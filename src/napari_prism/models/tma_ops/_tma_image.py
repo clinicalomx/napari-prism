@@ -22,8 +22,9 @@ from datatree.datatree import DataTree
 from geopandas import GeoDataFrame
 from loguru import logger
 from numpy import dtype, float64, ndarray
+from scipy.ndimage import binary_fill_holes, generate_binary_structure
 from shapely import Point, Polygon, geometry
-from skimage import feature, transform
+from skimage import feature, morphology, transform
 from sklearn.cluster import KMeans
 from spatialdata import SpatialData
 from spatialdata.models import (
@@ -566,6 +567,12 @@ class MultiScaleImageOperations(SdataImageOperations):
             ds_y_shape, ds_x_shape = working_image.shape
         ds_factor_x = fs_x_shape / ds_x_shape
         ds_factor_y = fs_y_shape / ds_y_shape
+
+        # Technically these should be integers since the image is in pyramid format;
+        # round to nearest whole number
+        ds_factor_x = round(ds_factor_x)
+        ds_factor_y = round(ds_factor_y)
+
         assert (
             ds_factor_x == ds_factor_y
         ), "Unequal downsampling factors for X and Y"
@@ -614,8 +621,11 @@ class TMAMasker(MultiScaleImageOperations):
         edge_filter: bool = False,
         adapt_hist: bool = False,
         gamma_correct: bool = False,
+        fill_holes: bool = False,
+        remove_small_spots_size: int | float = 0,
     ) -> ndarray[dtype[bool]]:
-        """Generates simple 'segmentation' of TMA cores using piped
+        """
+        Generates simple 'segmentation' of TMA cores using piped
         operations of a (optional preprocessing) > gaussian blur >
         multiotsu > threshold > expansion.
 
@@ -631,9 +641,6 @@ class TMAMasker(MultiScaleImageOperations):
         Returns:
             The generated masks.
         """
-        # Save parameters;
-        # For compat; work with Dask
-        # data loss shouldnt be an issue since we're working with images of 8-16bit?
         image = image.astype("int64")
         image = image.data.compute()
         if li_threshold:
@@ -653,6 +660,21 @@ class TMAMasker(MultiScaleImageOperations):
         blur_thresholded_expanded = skimage.segmentation.expand_labels(
             blur_thresholded, expansion_px
         )
+
+        # Additional morphological operators to enhance mask
+        if fill_holes:
+            footprint = generate_binary_structure(
+                blur_thresholded_expanded.ndim, 1
+            )
+
+            blur_thresholded_expanded = binary_fill_holes(
+                blur_thresholded_expanded, structure=footprint
+            )
+
+        if remove_small_spots_size > 0:  # skimage
+            blur_thresholded_expanded = morphology.remove_small_objects(
+                blur_thresholded_expanded, min_size=remove_small_spots_size
+            )
 
         return blur_thresholded_expanded
 
@@ -748,7 +770,9 @@ class TMAMasker(MultiScaleImageOperations):
         rasterize: bool = True,
         contrast_limits: tuple[float, float] = None,
         gamma: float = None,
-    ) -> None:
+        fill_holes: bool = False,
+        remove_small_spots_size: int | float = 0,
+    ) -> tuple[ndarray[dtype[bool]], BaseTransformation, str]:
         """Main masker function,
 
         1) Generate an initial mask using a gaussian blur
@@ -856,6 +880,8 @@ class TMAMasker(MultiScaleImageOperations):
                     edge_filter=edge_filter,
                     adapt_hist=adapt_hist,
                     gamma_correct=gamma_correct,
+                    fill_holes=fill_holes,
+                    remove_small_spots_size=remove_small_spots_size,
                 )
                 initial_masks += channel_mask  # max intensity projection
                 initial_masks = initial_masks > 0
@@ -869,31 +895,74 @@ class TMAMasker(MultiScaleImageOperations):
                 edge_filter=edge_filter,
                 adapt_hist=adapt_hist,
                 gamma_correct=gamma_correct,
+                fill_holes=fill_holes,
+                remove_small_spots_size=remove_small_spots_size,
             )
 
         # TODO: below is stilll quite slow, likely to do with transformation
         channel_label = (
             channel if isinstance(channel, str) else "_".join(channel)
         )
-        self.add_label(
-            initial_masks,
-            f"{channel_label}_mask",
-            write_element=True,
-            dims=("y", "x"),
-            transformations={"global": transformation_sequence},
-        )
 
+        masks_gdf = None
         if rasterize:
-            self._rasterize_tma_masks(
+            masks_gdf = self._rasterize_tma_masks(
                 initial_masks,
                 estimated_core_diameter_px,
                 expansion_px,
                 core_fraction,
-                channel_label,
-                transformation_sequence,
             )
-        else:
-            return transformation_sequence, ds_factor
+
+        return initial_masks, transformation_sequence, channel_label, masks_gdf
+
+        # self.add_label(
+        #     initial_masks,
+        #     f"{channel_label}_mask",
+        #     write_element=True,
+        #     dims=("y", "x"),
+        #     transformations={"global": transformation_sequence},
+        # )
+
+        # if rasterize:
+        #     self._rasterize_tma_masks(
+        #         initial_masks,
+        #         estimated_core_diameter_px,
+        #         expansion_px,
+        #         core_fraction,
+        #         channel_label,
+        #         transformation_sequence,
+        #     )
+        # else:
+        #     return transformation_sequence, ds_factor
+
+    def save_shapes(
+        self,
+        masks_gdf: geopandas.GeoDataFrame,
+        channel_label: str,
+        transformation_sequence: BaseTransformation,
+        write_element: bool = False,
+    ):
+        self.add_shapes(
+            masks_gdf,
+            f"{channel_label}_poly",
+            write_element=write_element,
+            transformations={"global": transformation_sequence},
+        )
+
+    def save_masks(
+        self,
+        masks: ndarray[dtype[bool]],
+        channel_label: str,
+        transformation_sequence: BaseTransformation,
+        write_element: bool = False,
+    ):
+        self.add_label(
+            masks,
+            f"{channel_label}",
+            write_element=write_element,
+            dims=("y", "x"),
+            transformations={"global": transformation_sequence},
+        )
 
     def _rasterize_tma_masks(
         self,
@@ -901,8 +970,6 @@ class TMAMasker(MultiScaleImageOperations):
         estimated_core_diameter_px: int | float,
         expansion_px: int | float,
         core_fraction: int | float,
-        channel_label: str,
-        transformation_sequence: BaseTransformation,
     ) -> None:
         """Rasterizes the masks generated by the mask_tma_cores function. Adds
         the rasterized masks to the SpatialData object.
@@ -936,13 +1003,7 @@ class TMAMasker(MultiScaleImageOperations):
         )
 
         # masks_table = TableModel.from_geodataframe(masks_gdf)
-
-        self.add_shapes(
-            masks_gdf,
-            f"{channel_label}_mask_poly",
-            write_element=True,
-            transformations={"global": transformation_sequence},
-        )
+        return masks_gdf
 
     def consolidate_geometrical_objects(
         self,
@@ -1517,12 +1578,6 @@ class TMADearrayer(SingleScaleImageOperations):
         tma_cores = tma_cores.set_geometry("geometry")
 
         self.core_gdf = tma_cores
-        self.add_shapes(
-            tma_cores,
-            "tma_core",
-            write_element=True,
-            transformations=self.transforms,
-        )
 
         # The enveloping box which encompasses the mask AND core bboxes.
         # useful for seg tiles
@@ -1533,12 +1588,6 @@ class TMADearrayer(SingleScaleImageOperations):
         tma_envelope = tma_envelope.drop_duplicates("tma_label")
         tma_envelope = tma_envelope.reset_index(drop=True)
         self.envelope_gdf = tma_envelope  # TODO: resolve cores, but no masks.
-        self.add_shapes(
-            tma_envelope,
-            "tma_envelope",
-            write_element=True,
-            transformations=self.transforms,
-        )
 
         # Table that annotates these objects.
         cores = AnnData(obs=pd.DataFrame(tma_cores["tma_label"]))
@@ -1570,6 +1619,22 @@ class TMADearrayer(SingleScaleImageOperations):
         envelopes.obs = envelopes.obs.set_index("tma_label")
         envelopes.obs["tma_label_col"] = envelopes.obs.index
 
+        return tma_cores, tma_envelope, envelopes, self.transforms
+
+    def save_dearray_results(self, tma_cores, tma_envelope, envelopes):
+        self.add_shapes(
+            tma_cores,
+            "tma_core",
+            write_element=True,
+            transformations=self.transforms,
+        )
+        self.add_shapes(
+            tma_envelope,
+            "tma_envelope",
+            write_element=True,
+            transformations=self.transforms,
+        )
+
         self.add_table(
             envelopes,
             "tma_table",
@@ -1586,7 +1651,7 @@ class TMADearrayer(SingleScaleImageOperations):
         expected_rows=0,
         expected_cols=0,
         masks_gdf=None,
-    ) -> None:
+    ) -> tuple[GeoDataFrame, GeoDataFrame, AnnData, BaseTransformation]:
         """Main dearray function,
 
         1) Perform the dearrayer.
@@ -1610,7 +1675,8 @@ class TMADearrayer(SingleScaleImageOperations):
             expected_rows,
             expected_cols,
         )
-        self._generate_enveloping_bounding_boxes(core_gdf, masks_gdf)
+        results = self._generate_enveloping_bounding_boxes(core_gdf, masks_gdf)
+        return results  # tma_cores, tma_envelope, envelopes, self.transforms
 
     # TODO: user interaction for manual grid modifications
     def append_tma_row(self) -> None:
@@ -1917,6 +1983,9 @@ class TMASegmenter(MultiScaleImageOperations):
         # Chosen segmentation scale
         multichannel_image = self.get_image_by_scale(scale=scale)  # CYX
 
+        if isinstance(segmentation_channel, str):
+            segmentation_channel = [segmentation_channel]
+
         # Chosen channel / channels; -> DataArray
         selected_channel_image = multichannel_image.sel(c=segmentation_channel)
 
@@ -2132,14 +2201,7 @@ class TMASegmenter(MultiScaleImageOperations):
 
             # seg_table["tma_label"] = seg_table["tma_label"].astype("category")
 
-            self.add_label(
-                global_seg_mask,
-                self.image_name + "_labels",
-                write_element=True,
-                dims=("x", "y"),
-                transformations={"global": transformation_sequence},
-                # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
-            )
+            return global_seg_mask, transformation_sequence
 
             # self.add_table(
             #     seg_table,
@@ -2150,6 +2212,22 @@ class TMASegmenter(MultiScaleImageOperations):
             #     region_key="lyr",
             #     instance_key=CELL_INDEX_LABEL,
             # )
+
+    def save_segmentation(
+        self,
+        global_seg_mask: DataArray,
+        transformation_sequence: BaseTransformation,
+        label_name: str,
+        write_element: bool = False,
+    ) -> None:
+        self.add_label(
+            global_seg_mask,
+            label_name,
+            write_element=write_element,
+            dims=("x", "y"),
+            transformations={"global": transformation_sequence},
+            # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
+        )
 
 
 class TMAMeasurer(MultiScaleImageOperations):
@@ -2349,3 +2427,214 @@ class TMAMeasurer(MultiScaleImageOperations):
             region_key="lyr",
             instance_key=CELL_INDEX_LABEL,
         )
+
+
+def mask_tma(
+    spatialdata: SpatialData,
+    image_name: str,
+    channel: str | list[str],
+    scale: str,
+    output_mask_name: str,
+    sigma_um: float,
+    expansion_um: float,
+    li_threshold: bool = False,
+    edge_filter: bool = False,
+    adapt_hist: bool = False,
+    gamma_correct: bool = False,
+    fill_holes: bool = False,
+    remove_small_spots_size: int | float = 0,
+    estimated_core_diameter_um: float | int = 700,
+    core_fraction: float | int = 0.2,
+    rasterize: bool = True,
+    reference_coordinate_system: str = "global",
+    inplace: bool = True,
+) -> SpatialData:
+    """Masks a channel or channels of the raw multiscale image stored in the
+    .image attribute of the provided SpatialData object.
+
+    """
+    # Build model
+    model = TMAMasker(
+        sdata=spatialdata,
+        image_name=image_name,
+        reference_coordinate_system=reference_coordinate_system,
+    )
+
+    # 4 tuple; masks, transfseq, channel label, masks_gdf
+    results = model.mask_tma_cores(
+        channel=channel,
+        scale=scale,
+        sigma_um=sigma_um,
+        expansion_um=expansion_um,
+        li_threshold=li_threshold,
+        edge_filter=edge_filter,
+        adapt_hist=adapt_hist,
+        gamma_correct=gamma_correct,
+        fill_holes=fill_holes,
+        remove_small_spots_size=remove_small_spots_size,
+        estimated_core_diameter_um=estimated_core_diameter_um,
+        core_fraction=core_fraction,
+        rasterize=rasterize,
+    )
+
+    masks, transformations, _, masks_gdf = results
+
+    if inplace:
+        # Add mask to sd
+        model.save_masks(
+            masks,
+            output_mask_name,
+            transformations,
+            write_element=False,
+        )
+
+        # Add shapes/poly representation
+        if masks_gdf is not None:
+            model.save_shapes(
+                masks_gdf,
+                output_mask_name,
+                transformations,
+                write_element=False,
+            )
+        # Return the modified sdata object;
+        return model.sdata
+    else:
+        # Return the outputs;
+        return masks, transformations, masks_gdf
+
+
+def dearray_tma(
+    spatialdata: SpatialData,
+    label_name: str,
+    expected_diameter_um: float | int = 700,
+    expectation_margin: float | int = 0.2,
+    expected_rows: int = 0,
+    expected_cols: int = 0,
+    inplace: bool = True,
+) -> (
+    SpatialData
+    | tuple[GeoDataFrame, GeoDataFrame, AnnData, BaseTransformation]
+):
+    """Automatically dearrays a TMA on masks stored in the .labels attribute of
+    the provided spatialdata object.
+
+    Args:
+        spatialdata: The spatialdata object to dearray.
+        label_name: The name of the label to dearray.
+        expected_diameter_um: The expected diameter of the TMA cores in microns.
+        expectation_margin: The margin of error for the expected diameter.
+        expected_rows: The expected number of rows in the TMA.
+        expected_cols: The expected number of columns in the TMA.
+    """
+    # Build model
+    model = TMADearrayer(sdata=spatialdata, label_name=label_name)
+
+    # Look for masks_gdf if provided
+    if label_name + "_poly" in model.sdata.shapes:
+        masks_gdf = model.sdata.shapes[label_name + "_poly"].data
+    else:
+        masks_gdf = None
+
+    # Run dearray
+    results = model.dearray_and_envelope_tma_cores(
+        expected_diameter_um=expected_diameter_um,
+        expectation_margin=expectation_margin,
+        expected_rows=expected_rows,
+        expected_cols=expected_cols,
+        masks_gdf=masks_gdf,
+    )
+    tma_cores, tma_envelope, envelopes, transforms = results
+
+    if inplace:
+        model.save_dearray_results(tma_cores, tma_envelope, envelopes)
+        return model.sdata
+    else:
+        return results
+
+
+def segment_tma(
+    spatialdata: SpatialData,
+    image_name: str,
+    segmentation_channel: str | list[str],  # Segmentation channel(s)
+    tiling_shapes: gpd.GeoDataFrame | None = None,
+    model_type: Literal[
+        "cyto3",
+        "cyto2",
+        "cyto",
+        "nuclei",
+        "tissuenet_cp3",
+        "livecell_cp3",
+        "yeast_PhC_cp3",
+        "yeast_BF_cp3",
+        "bact_phase_cp3",
+        "bact_fluor_cp3",
+        "deepbacs_cp3",
+        "cyto2_cp3",
+    ] = "nuclei",
+    nuclei_diam_um: float | None = None,
+    channel_merge_method: Literal["max", "mean", "sum", "median"] = "max",
+    optional_nuclear_channel: str | None = None,
+    tiling_shapes_annotation_column: str | None = None,
+    normalize: bool = True,
+    cellprob_threshold: float = 0.0,
+    flow_threshold: float = 0.4,
+    custom_model: Path | str | bool = False,
+    denoise_model: (
+        Literal[
+            "nan",
+            "denoise_cyto3",
+            "deblur_cyto3",
+            "upsample_cyto3",
+            "oneclick_cyto3",
+            "denoise_cyto2",
+            "deblur_cyto2",
+            "upsample_cyto2",
+            "oneclick_cyto2",
+            "denoise_nuclei",
+            "deblur_nuclei",
+            "upsample_nuclei",
+            "oneclick_nuclei",
+        ]
+        | None
+    ) = None,
+    preview: bool = False,
+    reference_coordinate_system: str = "global",
+) -> SpatialData | DataArray | tuple[DataArray, BaseTransformation]:
+    # build model
+    if isinstance(segmentation_channel, str):
+        segmentation_channel = [segmentation_channel]
+
+    model = TMASegmenter(
+        sdata=spatialdata,
+        image_name=image_name,
+        reference_coordinate_system=reference_coordinate_system,
+    )
+
+    output = model.segment_all(
+        scale="scale0",
+        segmentation_channel=segmentation_channel,
+        tiling_shapes=tiling_shapes,
+        model_type=model_type,
+        nuclei_diam_um=nuclei_diam_um,
+        channel_merge_method=channel_merge_method,
+        optional_nuclear_channel=optional_nuclear_channel,
+        tiling_shapes_annotation_column=tiling_shapes_annotation_column,
+        normalize=normalize,
+        cellprob_threshold=cellprob_threshold,
+        flow_threshold=flow_threshold,
+        custom_model=custom_model,
+        denoise_model=denoise_model,
+        preview=preview,
+    )
+
+    return output
+
+
+def measure_labels(
+    spatialdata: SpatialData,
+    label_name: str,
+    tiling_shapes: gpd.GeoDataFrame | None = None,
+    extended_properties: bool = False,
+    intensity_mode: Literal["mean", "median"] = "mean",
+) -> SpatialData | tuple[pd.DataFrame, pd.DataFrame]:
+    print()

@@ -20,6 +20,8 @@ from scipy import sparse as sp
 
 from napari_prism.models._utils import overrides
 
+MAX_GPU_CLUST_ITER = 500
+
 
 def gpu_import_error_message(package_name: str) -> str:
     """Standard error message when importing a GPU package fails.
@@ -35,6 +37,80 @@ def gpu_import_error_message(package_name: str) -> str:
         f"{package_name} not installed. Need to install gpu extras with: "
         "`pip install 'napari-prism[gpu]'`"
     )
+
+
+# TODO: consider multi dispatch for below
+def _sort_by_size_np(clusters: np.ndarray, min_size: int) -> np.ndarray:
+    """Relabel clustering in order of descending cluster size.
+
+    New labels are consecutive integers beginning at 0
+    Clusters that are smaller than min_size are assigned to -1
+
+    Args:
+        clusters: Array of cluster labels.
+        min_size: Minimum cluster size.
+
+    Returns:
+        Array of cluster labels re-labeled by size.
+    """
+    relabeled = np.zeros(clusters.shape, dtype=np.int32)
+    sizes = [sum(clusters == x) for x in np.unique(clusters)]
+    o = np.argsort(sizes)[::-1]
+    for i, c in enumerate(o):
+        if sizes[c] > min_size:
+            relabeled[clusters == c] = i
+        else:
+            relabeled[clusters == c] = -1
+    return relabeled
+
+
+def _sort_by_size_cp(
+    self,
+    clusters: "cupy.ndarray",  # type: ignore # noqa: F821
+    min_size: int,
+) -> "cupy.ndarray":  # type: ignore # noqa: F821
+    """
+    Relabel clustering in order of descending cluster size.
+    New labels are consecutive integers beginning at 0
+    Clusters that are smaller than min_size are assigned to -1.
+    Adapted from https://github.com/jacoblevine/PhenoGraph.
+
+    Args:
+        clusters: Array of cluster labels.
+        min_size: Minimum cluster size.
+
+    Returns:
+        Array of cluster labels re-labeled by size.
+
+    """
+    relabeled = self.cupy.zeros(clusters.shape, dtype=int)
+    _, counts = self.cupy.unique(clusters, return_counts=True)
+    # sizes = cp.array([cp.sum(clusters == x) for x in cp.unique(clusters)])
+    o = self.cupy.argsort(counts)[::-1]
+    for i, c in enumerate(o):
+        if counts[c] > min_size:
+            relabeled[clusters == c] = i
+        else:
+            relabeled[clusters == c] = -1
+    return relabeled
+
+
+def _get_backend_sc(backend):
+    if backend == "GPU":
+        try:
+            import rapids_singlecell as sc
+
+            return sc
+        except ImportError as e:
+            raise ImportError(
+                gpu_import_error_message("rapids-singlecell")
+            ) from e
+    elif backend == "CPU":
+        import scanpy as sc
+
+        return sc
+    else:
+        raise ValueError("Backend must be either 'CPU' or 'GPU'.")
 
 
 class KNN:
@@ -748,32 +824,9 @@ class GraphClustererCPU:
             n_iterations=max_iter,
         )
         cdf = np.asarray(partition.membership)
-        cdf = self._sort_by_size(cdf, min_size)
+        cdf = _sort_by_size_np(cdf, min_size)
         Q = partition.q
         return cdf, Q
-
-    def _sort_by_size(self, clusters: np.ndarray, min_size: int) -> np.ndarray:
-        """Relabel clustering in order of descending cluster size.
-
-        New labels are consecutive integers beginning at 0
-        Clusters that are smaller than min_size are assigned to -1
-
-        Args:
-            clusters: Array of cluster labels.
-            min_size: Minimum cluster size.
-
-        Returns:
-            Array of cluster labels re-labeled by size.
-        """
-        relabeled = np.zeros(clusters.shape, dtype=np.int32)
-        sizes = [sum(clusters == x) for x in np.unique(clusters)]
-        o = np.argsort(sizes)[::-1]
-        for i, c in enumerate(o):
-            if sizes[c] > min_size:
-                relabeled[clusters == c] = i
-            else:
-                relabeled[clusters == c] = -1
-        return relabeled
 
 
 class GraphClustererGPU:
@@ -926,38 +979,8 @@ class GraphClustererGPU:
 
     def _sort_vertex_values(self, cdf, min_size):
         cdf = cdf.sort_values(by="vertex").partition.values
-        cdf = self._sort_by_size(cdf, min_size)
+        cdf = _sort_by_size_cp(cdf, min_size)
         return cdf
-
-    def _sort_by_size(
-        self,
-        clusters: "cupy.ndarray",  # type: ignore # noqa: F821
-        min_size: int,
-    ) -> "cupy.ndarray":  # type: ignore # noqa: F821
-        """
-        Relabel clustering in order of descending cluster size.
-        New labels are consecutive integers beginning at 0
-        Clusters that are smaller than min_size are assigned to -1.
-        Adapted from https://github.com/jacoblevine/PhenoGraph.
-
-        Args:
-            clusters: Array of cluster labels.
-            min_size: Minimum cluster size.
-
-        Returns:
-            Array of cluster labels re-labeled by size.
-
-        """
-        relabeled = self.cupy.zeros(clusters.shape, dtype=int)
-        _, counts = self.cupy.unique(clusters, return_counts=True)
-        # sizes = cp.array([cp.sum(clusters == x) for x in cp.unique(clusters)])
-        o = self.cupy.argsort(counts)[::-1]
-        for i, c in enumerate(o):
-            if counts[c] > min_size:
-                relabeled[clusters == c] = i
-            else:
-                relabeled[clusters == c] = -1
-        return relabeled
 
 
 class HybridPhenographModular:
@@ -1093,7 +1116,7 @@ class HybridPhenographModular:
         else:  # Within GPU
             return self.refiner.compute_jaccard(idx)  # jaccard edgelist
 
-    def cluster_func(self, edgelist, resolution, min_size):
+    def cluster_func(self, edgelist, resolution, min_size, n_iter):
         """Calls the graph clusterer based on the backend. Parses the parameters
         accordingly.
 
@@ -1113,14 +1136,22 @@ class HybridPhenographModular:
             raise TypeError("Unsupported clusterer")
 
         # TODO: Run isolated node checks; latest branch includes isolated nodes in graph structure -> 24.04.6
+        if n_iter == -1:
+            n_iter = MAX_GPU_CLUST_ITER
 
         if self.clustering == "louvain":
             return self.clusterer.compute_louvain(
-                graph, resolution=resolution, min_size=min_size
+                graph,
+                resolution=resolution,
+                min_size=min_size,
+                max_iter=n_iter,
             )
         elif self.clustering == "leiden":
             return self.clusterer.compute_leiden(
-                graph, resolution=resolution, min_size=min_size
+                graph,
+                resolution=resolution,
+                min_size=min_size,
+                max_iter=n_iter,
             )
         else:
             raise TypeError("Unsupported clustering type")
@@ -1271,17 +1302,20 @@ class HybridPhenographSearch(HybridPhenographModular):
         embedding_name: str = "X_pca_harmony",
         algorithm: str = "brute",
         metric: str = "euclidean",
+        n_pcs: int | None = None,
         p: int = 2,
         n_jobs: int = -1,
         output_type: str = "cupy",
-        two_pass_precision: bool = False,
+        two_pass_precision: bool = False,  # track https://github.com/rapidsai/cuml/issues/5788
         rs: list[float] | None = None,
         min_size: int = 10,
         save: bool = False,
         save_name: str = "data",
-        enable_cold_start: bool = True,  # NOT IMP
+        enable_cold_start: bool = True,  # NOT IMPLEMENTED
         cold_from: str | None = None,
         log_time: bool = True,
+        random_state: int = 0,
+        n_iter: int = -1,
     ) -> AnnData:
         """Extension of `self.cluster` performed over many Ks and Rs.
 
@@ -1305,6 +1339,10 @@ class HybridPhenographSearch(HybridPhenographModular):
                 from a previous run.
             cold_from: File to resume from if cold start is enabled.
             log_time: Log the time at each step of the process.
+            random_state: Random seed for algorithms.
+            n_iter: Maximum number of iterations. If -1, runs until it reaches
+                an iteration with no improvement in quality. If GPU, this is
+                enforced to be 500.
 
         Returns:
             AnnData object with the following stored:
@@ -1323,7 +1361,8 @@ class HybridPhenographSearch(HybridPhenographModular):
         # Use PCA embeddings as input data
         if embedding_name not in adata.obsm:
             if "X_pca" not in adata.obsm:
-                raise ValueError("No PCA embedding found in AnnData.obsm")
+                sc = _get_backend_sc(self.clusterer_backend)
+                sc.pp.pca(adata, n_comps=n_pcs)
             embedding_name = "X_pca"
         data = adata.obsm[embedding_name]
 
@@ -1368,7 +1407,10 @@ class HybridPhenographSearch(HybridPhenographModular):
             # Then for that Jaccard Graph, cluster for each resolution R
             for r in rs:
                 clusters, Q = self.cluster_func(
-                    refined_edgelist, resolution=r, min_size=min_size
+                    refined_edgelist,
+                    resolution=r,
+                    min_size=min_size,
+                    n_iter=n_iter,
                 )
                 self._log_current_time()
 
@@ -1451,7 +1493,6 @@ class ScanpyClustering:
     the GPU (rapids-singlecell).
     """
 
-    MAX_GPU_LEIDEN_ITER = 500
     VALID_BACKENDS = ["CPU", "GPU"]
 
     def __init__(self, backend: Literal["CPU", "GPU"] = "CPU") -> None:
@@ -1463,21 +1504,7 @@ class ScanpyClustering:
         self._set_df_backend(backend)
 
     def _set_backend_sc(self, backend):
-        if backend == "GPU":
-            try:
-                import rapids_singlecell as sc
-
-                self.sc = sc
-            except ImportError as e:
-                raise ImportError(
-                    gpu_import_error_message("rapids-singlecell")
-                ) from e
-        elif backend == "CPU":
-            import scanpy as sc
-
-            self.sc = sc
-        else:
-            raise ValueError("Backend must be either 'CPU' or 'GPU'.")
+        self.sc = _get_backend_sc(backend)
 
     def _set_array_backend(self, backend):
         """Sets the dataframe backend for processing the clustering outputs.
@@ -1531,6 +1558,7 @@ class ScanpyClustering:
         resolution: float,
         random_state: int = 0,
         n_iter: int = -1,
+        min_size: int = 10,
     ) -> tuple[np.ndarray, float]:
         """Perform the leiden graph clustering on the connectivities graph
         generated by scanpy.pp.neighbors (or rapids_singlecell.pp.neighbors).
@@ -1541,6 +1569,8 @@ class ScanpyClustering:
             random_state: Random seed for the algorithm.
             n_iter: Maximum number of iterations. If -1, runs until it reaches
                 an iteration with no improvement in quality.
+            min_size: Minimum cluster size. Clusters with less than this number
+                of nodes are assigned to -1.
 
         Returns:
             Tuple of the cluster labels and the quality score.
@@ -1561,6 +1591,7 @@ class ScanpyClustering:
                 n_iterations=n_iter,
             )
             groups = np.array(part.membership)
+            groups = _sort_by_size_np(groups, min_size)
             Q = part.modularity
             return groups, Q
 
@@ -1571,7 +1602,7 @@ class ScanpyClustering:
 
             cg = create_graph(adata.obsp["connectivities"])
             if n_iter == -1:
-                n_iter = self.MAX_GPU_LEIDEN_ITER  # enforce max iters for gpu
+                n_iter = MAX_GPU_CLUST_ITER  # enforce max iters for gpu
 
             leiden_parts, Q = culeiden(
                 cg,
@@ -1579,6 +1610,8 @@ class ScanpyClustering:
                 random_state=random_state,
                 max_iter=n_iter,
             )
+
+            leiden_parts = _sort_by_size_cp(leiden_parts, min_size)
 
             # Format output
             groups = (
@@ -1672,7 +1705,7 @@ class ScanpyClusteringSearch(ScanpyClustering):
         # Knn / neighbors
         for k in ks:
             self.sc.pp.neighbors(
-                adata, n_neighbors=10, use_rep=embedding_name
+                adata, n_neighbors=k, use_rep=embedding_name
             )  # X_pca or X_pca_harmony
             self._log_current_time(f"Finished KNN with k={k}")
 
@@ -1682,6 +1715,7 @@ class ScanpyClusteringSearch(ScanpyClustering):
                     resolution=r,
                     random_state=random_state,
                     n_iter=n_iter,
+                    min_size=min_size,
                 )
 
                 # TODO -> min_size filtering
@@ -1741,10 +1775,86 @@ class ScanpyClusteringSearch(ScanpyClustering):
         return adata
 
 
-def cluster(
+# For API
+def cluster_embeddings(
     adata: AnnData,
     recipe: Literal["phenograph", "scanpy"],
+    ks: int | list[int],
+    rs: float | list[float],
+    embedding_name: str = "X_pca_harmony",
+    n_pcs: int | None = None,
+    random_state: int = 0,
+    n_iter: int = -1,
+    min_size: int = 10,
+    log_time: bool = True,
     backend: Literal["CPU", "GPU"] = "CPU",
-    **kwargs,
 ) -> AnnData:
-    pass
+    """Perform Phenograph or Scanpy clustering on an .obsm embedding within an
+    AnnData object.
+
+    Args:
+        adata: AnnData object.
+        recipe: Clustering recipe to use.
+        ks: A single or list of K values to search over.
+        rs: A single or list of R values to search over.
+        embedding_name: The name of the embedding to use. If not found, PCA will
+            be run on .X, based on the value of n_pcs.
+        n_pcs: The number of principal components to use if no PCA embedding is
+            found in .obsm.
+        random_state: The random seed to use for all algorithms.
+        n_iter: The maximum number of iterations to use. If -1, runs until it
+            reaches an iteration with no improvement in quality. If running on
+            GPU, this is enforced to be 500.
+        min_size: The minimum size of a cluster. If a cluster has less than this
+            number of cells, it will be assigned a label of -1.
+        log_time: Log the time at each step of the process.
+        backend: The backend to use for clustering. Either 'CPU' or 'GPU'.
+
+    Returns:
+        AnnData object with the following stored:
+        1) Clustering results stored as pd.DataFrames in
+            `adata.obsm[*_labels]`, where the columns represent a single
+            clustering run.
+        2) Graph clustering quality scores stored in
+            `adata.uns[*_quality_scores]`.
+    """
+    # build clustering model
+    if recipe == "phenograph":
+        # refiner left alone due to cpu only
+        model = HybridPhenographSearch(knn=backend, clusterer=backend)
+    elif recipe == "scanpy":
+        model = ScanpyClusteringSearch(backend=backend)
+    else:
+        raise ValueError(f"Recipe must be one of {['phenograph', 'scanpy']}.")
+
+    if isinstance(ks, int):
+        ks = [ks]
+    if isinstance(rs, float):
+        rs = [rs]
+
+    # Perform parameter search conditionally based on K
+    if len(ks) == 0:
+        raise ValueError("Ks must be a list of integers.")
+
+    if len(rs) == 0:
+        raise ValueError("Rs must be a list of floats.")
+
+    if min(ks) < 2:
+        raise ValueError("Ks must be greater than 1.")
+
+    if min(rs) <= 0:
+        raise ValueError("Rs must be greater than 0.")
+
+    adata = adata.copy()
+    adata = model.parameter_search(
+        adata,
+        ks=ks,
+        embedding_name=embedding_name,
+        n_pcs=n_pcs,
+        rs=rs,
+        random_state=random_state,
+        n_iter=n_iter,
+        min_size=min_size,
+        log_time=log_time,
+    )
+    return adata

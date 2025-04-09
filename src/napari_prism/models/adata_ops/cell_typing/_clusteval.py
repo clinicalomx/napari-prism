@@ -180,3 +180,61 @@ class ClusteringSearchEvaluator:
         Usually, `score_function` computes a score that assesss how well the
         assigned cluster labels aggregate in some data space."""
         raise NotImplementedError()
+
+
+# For API
+def cluster_scores(
+    adata: AnnData,
+    clustering_score: Literal["ARI", "NMI", "AMI"],
+    k: int | None = None,
+    inplace: bool = False,
+):
+    """Assess the quality of clustering results by computing a pairwise
+    clustering score between every other clustering run. Higher values usually
+    indicate concordant clustering results.
+
+    Args:
+        adata: Anndata object containing clustering results.
+        clustering_score: The clustering score to assess. Scores either
+            adjusted rand index (ARI), normalized mutual information (NMI), or
+            adjusted mutual information (AMI).
+        k (Optional): Subset the pairwise scores to a given `k`.
+
+    Returns:
+        pd.DataFrame of pairwise scores between clustering runs.
+    """
+    # Look for the clustering searcher name in AnnData;
+    # if not found, raise an error
+    implemented_searchers = ClusteringSearchEvaluator.IMPLEMENTED_SEARCHERS
+    to_search_in_obsm = [x + "_labels" for x in implemented_searchers]
+    searcher = None
+    for searcher in to_search_in_obsm:
+        if searcher not in adata.obsm:
+            continue
+        else:
+            break
+
+    if searcher is None:
+        raise ValueError("Clustering searcher not found in .obsm.")
+
+    evaluator = ClusteringSearchEvaluator(
+        adata,
+        searcher_name=searcher.replace("_labels", ""),
+    )
+
+    if clustering_score == "ARI":
+        results = evaluator.adjusted_rand_index(k)
+    elif clustering_score == "NMI":
+        results = evaluator.normalized_mutual_info(k)
+    elif clustering_score == "AMI":
+        results = evaluator.adjusted_mutual_info(k)
+    else:
+        raise ValueError(f"Invalid clustering score: {clustering_score}")
+
+    if inplace:
+        adata.uns[
+            searcher.replace("_labels", "")
+            + f"{clustering_score}_cluster_scores"
+        ] = results
+    else:
+        return results

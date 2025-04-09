@@ -55,19 +55,24 @@ class SdataImageNapariWidget(BaseNapariWidget):
         # Refresh to show new elements added to disk
         spatial_data_widget = self.get_sdata_widget()
         selected = self.viewer.layers.selection.active
-        spatial_data_widget.elements_widget._onItemChange(
-            selected.metadata["_current_cs"]
-        )
+        if "_current_cs" in selected.metadata and "sdata" in selected.metadata:
+            spatial_data_widget.elements_widget._onItemChange(
+                selected.metadata["_current_cs"]
+            )
 
-        # And refresh any new coordinate systems added to disk
-        cs_widget = spatial_data_widget.coordinate_system_widget
-        before_cs = {
-            cs for sdata in cs_widget._sdata for cs in sdata.coordinate_systems
-        }
-        items = {cs_widget.item(i).text() for i in range(cs_widget.count())}
-        new_cs = items - before_cs
-        if new_cs:
-            cs_widget.addItems(new_cs)
+            # And refresh any new coordinate systems added to disk
+            cs_widget = spatial_data_widget.coordinate_system_widget
+            before_cs = {
+                cs
+                for sdata in cs_widget._sdata
+                for cs in sdata.coordinate_systems
+            }
+            items = {
+                cs_widget.item(i).text() for i in range(cs_widget.count())
+            }
+            new_cs = items - before_cs
+            if new_cs:
+                cs_widget.addItems(new_cs)
 
     def get_sdata_widget(self):
         return self.viewer.window._dock_widgets["SpatialData"].widget()

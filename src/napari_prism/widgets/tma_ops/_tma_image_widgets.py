@@ -311,6 +311,18 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             self.model = None
             self.reset_choices()
             self._generate_masks_button.enabled = False
+
+        if (
+            selected is not None
+            and "masks" in selected.metadata
+            and "transforms" in selected.metadata
+            and "channel_label" in selected.metadata
+            and "masks_gdf" in selected.metadata
+            and isinstance(selected, napari.layers.Labels)
+        ):
+            self._save_results_button.enabled = True
+        else:
+            self._save_results_button.enabled = False
         # self.set_parent_layer(layer)
         # self.model = TMAMasker(
         #     layer.data,
@@ -416,6 +428,28 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             widget_type="PushButton",
         )
 
+        self._fill_holes_checkbox = create_widget(
+            value=False,
+            name="Fill holes",
+            annotation=bool,
+            widget_type="CheckBox",
+        )
+
+        self._remove_small_spots_size_entry = create_widget(
+            value=0,
+            name="Remove small spots",
+            annotation=int,
+            options={"min": 0, "step": 10, "max": 1000},
+            widget_type="SpinBox",
+        )
+
+        self._save_results_button = create_widget(
+            value=False,
+            name="Save results",
+            annotation=bool,
+            widget_type="PushButton",
+        )
+
         # Populate container with widgets;
         ls = [
             # self._inherit_correction_settings,
@@ -429,15 +463,23 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             self._gamma_correction_button,
             self._estimated_core_diameter_um_entry,
             self._thresholding_core_fraction_entry,
+            self._fill_holes_checkbox,
+            self._remove_small_spots_size_entry,
             self._generate_masks_button,
+            self._save_results_button,
         ]
         # If initialised with an sdata, enable
         if self.model is not None:
             self._generate_masks_button.enabled = True
+            self._save_results_button.enabled = True
         else:
             self._generate_masks_button.enabled = False
+            self._save_results_button.enabled = False
 
         self._generate_masks_button.changed.connect(self._generate)
+        self._save_results_button.changed.connect(
+            self._save_selected_layer_to_sdata
+        )
         self.extend(ls)
 
     # TODO: Thread worker and progress bar
@@ -461,7 +503,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
         #     gamma = selected.gamma
 
         scale = self.get_multiscale_image_scales()[self.scale_index]
-        self.model.mask_tma_cores(
+        results = self.model.mask_tma_cores(
             channel=self._mask_channel_selection.value,  # self.get_channel()
             scale=scale,
             mask_selection=bbox_bounds,
@@ -477,11 +519,61 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             core_fraction=float(self._thresholding_core_fraction_entry.value),
             contrast_limits=contrast_limits,
             gamma=gamma,
+            fill_holes=self._fill_holes_checkbox.value,
+            remove_small_spots_size=self._remove_small_spots_size_entry.value,
+        )
+
+        masks, transformation_sequence, channel_label, masks_gdf = results
+        self.latest_masks = masks
+        self.latest_transforms = transformation_sequence
+        self.latest_channel_label = channel_label
+        self.latest_masks_gdf = masks_gdf
+        # current_cs = self.get_sdata_widget().coordinate_system_widget._system
+        # Retrieve affine transform as per spatialdata specifications;
+        # cs = transformation_sequence.keys().__iter__().__next__() if current_cs is None else current_cs
+        # ct = transformation_sequence.get(cs)
+        affine = transformation_sequence.to_affine_matrix(
+            ("y", "x"), ("y", "x")
+        )
+        # Show mask in memory to viewer, not as sdata yet
+        self.viewer.add_labels(
+            masks,
+            name=channel_label + "_mask",
+            affine=affine,
+            # For saving later
+            metadata={
+                "masks": masks,
+                "transforms": transformation_sequence,
+                "channel_label": channel_label,
+                "masks_gdf": masks_gdf,
+            },
         )
 
         # refresh the Sdata elements after this is called.
         # NOTE: will be depracated in 0.5.0 napari
-        self.refresh_sdata_widget()
+
+    def _save_selected_layer_to_sdata(self):
+        selected = self.viewer.layers.selection.active
+        if (
+            selected is not None
+            and "masks" in selected.metadata
+            and "transforms" in selected.metadata
+            and "channel_label" in selected.metadata
+            and "masks_gdf" in selected.metadata
+            and isinstance(selected, napari.layers.Labels)
+        ):
+            self.model.save_masks(
+                selected.metadata["masks"],
+                selected.metadata["channel_label"],
+                selected.metadata["transforms"],
+            )
+
+            self.model.save_shapes(
+                selected.metadata["masks_gdf"],
+                selected.metadata["channel_label"],
+                selected.metadata["transforms"],
+            )
+            self.refresh_sdata_widget()
 
 
 class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
@@ -527,13 +619,15 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
         #   layer = get_selected_layer(self.viewer, self._select_layer_widget)
         masks_gdf = self.model.sdata.get(self.model.image_name + "_poly", None)
 
-        self.model.dearray_and_envelope_tma_cores(
+        results = self.model.dearray_and_envelope_tma_cores(
             float(self._estimated_core_diameter_um_entry.value),
             expected_rows=int(self._nrows_entry.value),
             expected_cols=int(self._ncols_entry.value),
             expectation_margin=0.2,
             masks_gdf=masks_gdf,
         )  # Sets self.gff
+
+        tma_cores, tma_envelope, envelopes, transforms = results
 
         self.refresh_sdata_widget()
         # TODO: Create coordainte system from bboxes ?
