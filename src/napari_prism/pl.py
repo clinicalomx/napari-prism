@@ -4,6 +4,7 @@ from typing import Literal
 
 import dask.array as da
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import scanpy as sc
 import seaborn as sns
@@ -11,9 +12,10 @@ import skimage
 import xarray as xr
 from anndata import AnnData
 from spatialdata import SpatialData
-
+from spatialdata.transformations import \
+    get_transformation_between_coordinate_systems
+import spatialdata_plot
 from napari_prism.models.tma_ops._tma_image import TMASegmenter
-
 
 def image(
     sdata: SpatialData,
@@ -24,55 +26,161 @@ def image(
     figsize: tuple[int, int] | None = None,
     dpi: int | None = None,
     coordinate_system: str = "global",  # If generated with prism.
+    show=True,
 ) -> None | SpatialData:
-    sdata.pl.render_images(
+    out = sdata.pl.render_images(
         image_name, channel_label, cmap=channel_cmap, alpha=alpha
-    ).pl.show(figsize=figsize, dpi=dpi, coordinate_systems=coordinate_system)
-
+    )
+    if show:
+        out.pl.show(figsize=figsize, dpi=dpi, coordinate_systems=coordinate_system)
+    else:
+        return out
 
 def mask_tma(
     sdata: SpatialData,
     label_name: str,
     image_name: str | None = None,
-    image_channel_label: str | None = None,
-    image_channel_cmap: str | None = None,
-    image_alpha: float | None = None,
+    channel_label: str | None = None,
+    channel_cmap: str | None = "gray",
     figsize: tuple[int, int] | None = None,
     dpi: int | None = None,
     coordinate_system: str = "global",  # If generated with prism.
-    **kwargs,
-):
-    """
-    Plot masks.
-
-    Args:
-        sdata: SpatialData object.
-        label_name: Name of the label to plot.
-        image_name (Optional): Name of the image to plot.
-        image_channel_label (Optional): Label of the channel to plot. Must be
-            provided if `image_name` is provided.
-        image_channel_cmap (Optional): Colormap of the channel to plot.
-        image_alpha (Optional): Alpha of the channel to plot.
-        **kwargs: Passed to `PlotAccessor.render_labels`.
-    """
-    if image_name is not None and image_channel_label is not None:
-        sdata.pl.render_images(
-            image_name,
-            image_channel_label,
-            cmap=image_channel_cmap,
-            alpha=image_alpha,
-        ).pl.render_labels(label_name, **kwargs).pl.show(
-            figsize=figsize, dpi=dpi, coordinate_systems=coordinate_system
+    show: bool = True,
+    **kwargs
+) -> None | SpatialData:
+    IMALPHA = 1.0 # we have to define it here despite being the default above?
+    if image_name is not None and channel_label is not None:
+        out = image(
+            sdata, image_name, channel_label, 
+            channel_cmap, IMALPHA, show=False
         )
     else:
-        sdata.pl.render_labels(label_name, **kwargs).pl.show(
-            figsize=figsize, dpi=dpi, coordinate_systems=coordinate_system
+        out = sdata
+
+    out = out.pl.render_labels(label_name, **kwargs)
+    
+    if show:
+        out.pl.show(
+            coordinate_systems=coordinate_system,
+            figsize=figsize,
+            dpi=dpi,
         )
+    else:
+        return out
+
+def dearray_tma(
+    sdata: SpatialData,
+    shapes_name: str,
+    image_name: str | None = None,
+    channel_label: str | None = None,
+    channel_cmap: str | None = "gray",
+    figsize: tuple[int, int] | None = None,
+    dpi: int | None = None,
+    coordinate_system: str = "global",  # If generated with prism.
+    fill_alpha: float = 0.0,
+    outline_alpha: float = 1.0,
+    outline_width: float = 2.0,
+    outline_color: str = "blue",
+    tma_annotation_color: str = "white",
+    tma_annotation_fontsize: float = 20,
+    show: bool = True,
+    **kwargs
+) -> None | SpatialData:
+    IMALPHA = 1.0
+    if image_name is not None and channel_label is not None:
+        out = image(
+            sdata, image_name, channel_label, 
+            channel_cmap, IMALPHA, show=False
+        )
+    else:
+        out = sdata
+    
+    out = out.pl.render_shapes(
+        shapes_name, fill_alpha=fill_alpha, outline_alpha=outline_alpha,
+        outline_width=outline_width, outline_color=outline_color,
+        **kwargs
+    )
+    
+    def _transform_point(point, affine_matrix):
+        homogeneous_point = np.array([point[0], point[1], 1])
+    
+        transformed = affine_matrix @ homogeneous_point
+
+        if transformed[2] != 0:
+            transformed /= transformed[2]
+        
+        return transformed[:2]
+
+    if show:
+        out.pl.show(
+            coordinate_systems=coordinate_system,
+            figsize=figsize,
+            dpi=dpi,
+        )
+        # Annotate text;
+        transforms = get_transformation_between_coordinate_systems(
+            sdata, sdata[shapes_name], coordinate_system
+        )
+        affine = transforms.to_affine_matrix(("x", "y"), ("x", "y"))
+        for _, geom in sdata[shapes_name].iterrows():
+            xmin, ymin, xmax, ymax = geom["geometry"].bounds
+            middle = ((xmin + xmax) / 2, (ymin + ymax) / 2)
+            middle_global = tuple(
+                _transform_point(middle, affine)
+            )
+            plt.annotate(
+                geom["tma_label"],
+                xy=middle_global,
+                color=tma_annotation_color,
+                fontsize=tma_annotation_fontsize,
+                ha="center",
+                va="center",
+            )
+    else:
+        return out
 
 
-def dearray_tma():
-    pass
+def segment_tma(
+    sdata: SpatialData,
+    segmentation_name: str,
+    image_name: str | None = None,
+    channel_label: str | None = None,
+    channel_cmap: str | None = "gray",
+    fill_alpha: float = 0.0,
+    outline_alpha: float = 1.0,
+    contour_px: int = 3,
+    figsize: tuple[int, int] | None = None,
+    dpi: int | None = None,
+    coordinate_system: str = "global",  # If generated with prism.
+    show: bool = True,
+    **kwargs
+):
+    IMALPHA = 1.0
+    if image_name is not None and channel_label is not None:
+        out = image(
+            sdata, image_name, channel_label, 
+            channel_cmap, IMALPHA, show=False
+        )
+    else:
+        out = sdata
+    
+    out = out.pl.render_labels(
+        segmentation_name, 
+        fill_alpha=fill_alpha,
+        outline_alpha=outline_alpha,
+        contour_px=contour_px,
+        **kwargs
+    )
 
+    if show:
+        out.pl.show(
+            coordinate_systems=coordinate_system,
+            figsize=figsize,
+            dpi=dpi,
+        )
+        
+    else:
+        return out
 
 def _apply_skimage_to_dataarray(function, dataarray):
     dataarray.data = function(da.array(dataarray.data))

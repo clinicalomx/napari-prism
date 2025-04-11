@@ -1837,12 +1837,15 @@ class TMASegmenter(MultiScaleImageOperations):
         """
         device = None
         # sentinel values for diameter
-        if nuclei_diam_um <= 0:
-            nuclei_diam_px = None  # Automated diameter estimation
+        if nuclei_diam_um is not None:
+            if nuclei_diam_um <= 0:
+                nuclei_diam_px = None  # Automated diameter estimation
+            else:
+                nuclei_diam_px = self.convert_um_to_px(
+                    nuclei_diam_um
+                )  #  * self.get_px_per_um() # px
         else:
-            nuclei_diam_px = self.convert_um_to_px(
-                nuclei_diam_um
-            )  #  * self.get_px_per_um() # px
+            nuclei_diam_px = None
 
         gpu = core.use_gpu()
 
@@ -2053,7 +2056,10 @@ class TMASegmenter(MultiScaleImageOperations):
                         tiling_shapes[tiling_shapes_annotation_column]
                     )
                 else:
-                    bbox_labels = list(geoms.index)
+                    if "tma_label" in tiling_shapes.columns:
+                        bbox_labels = list(tiling_shapes["tma_label"])
+                    else: # last resort
+                        bbox_labels = list(geoms.index.astype(str))
 
                 # Prepare image tiles
                 image_tiles = []
@@ -2229,7 +2235,6 @@ class TMASegmenter(MultiScaleImageOperations):
             # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
         )
 
-
 class TMAMeasurer(MultiScaleImageOperations):
     """Class for measuring statistics of cells in TMA cores. Uses skimage.
     measure.regionprops_table for the measurements."""
@@ -2257,6 +2262,7 @@ class TMAMeasurer(MultiScaleImageOperations):
     def measure_labels(
         self,
         labels: DataArray,  # Instance Labels
+        labels_name: str | None = None,
         tiling_shapes: gpd.GeoDataFrame | None = None,
         extended_properties: bool = False,
         intensity_mode: Literal["mean", "median"] = "mean",
@@ -2387,7 +2393,9 @@ class TMAMeasurer(MultiScaleImageOperations):
             obs_like = obs_like.rename(columns={"label": CELL_INDEX_LABEL})
 
         # Consolidate results
-        obs_like["lyr"] = self.image_name + "_labels"
+        if labels_name is None:
+            labels_name = self.image_name + "_labels"
+        obs_like["lyr"] = labels_name
         obs_like["tma_label"] = obs_like["tma_label"].astype("category")
         # Extract channel information from the intensity image, assumed to be
         # our dataarray
@@ -2418,14 +2426,26 @@ class TMAMeasurer(MultiScaleImageOperations):
 
         # adata_parsed = TableModel.parse(adata)
 
+        return adata, CELL_INDEX_LABEL
+    
+    def save_measurements(
+        self,
+        adata: AnnData,
+        label_name: str,
+        output_table_name: str | None = None,
+        instance_key: str | None = CELL_INDEX_LABEL,
+    ) -> None:
+        if output_table_name is None:
+            output_table_name = label_name + "_expression"
+
         self.add_table(
             adata,
-            "labels_expression",
-            write_element=True,
+            output_table_name,
+            write_element=False,
             # TODO: future -> seg_table["tma_label"].unique().tolist()
-            region=self.image_name + "_labels",  # or none
+            region=label_name,  # or none
             region_key="lyr",
-            instance_key=CELL_INDEX_LABEL,
+            instance_key=instance_key,
         )
 
 
@@ -2527,11 +2547,11 @@ def dearray_tma(
         expected_cols: The expected number of columns in the TMA.
     """
     # Build model
-    model = TMADearrayer(sdata=spatialdata, label_name=label_name)
+    model = TMADearrayer(sdata=spatialdata, image_name=label_name)
 
     # Look for masks_gdf if provided
     if label_name + "_poly" in model.sdata.shapes:
-        masks_gdf = model.sdata.shapes[label_name + "_poly"].data
+        masks_gdf = model.sdata.shapes[label_name + "_poly"]
     else:
         masks_gdf = None
 
@@ -2555,11 +2575,11 @@ def dearray_tma(
 def segment_tma(
     spatialdata: SpatialData,
     image_name: str,
+    output_segmentation_label: str,
     segmentation_channel: str | list[str],  # Segmentation channel(s)
     tiling_shapes: gpd.GeoDataFrame | None = None,
     model_type: Literal[
-        "cyto3",
-        "cyto2",
+        "cyto3",        "cyto2",
         "cyto",
         "nuclei",
         "tissuenet_cp3",
@@ -2599,6 +2619,7 @@ def segment_tma(
     ) = None,
     preview: bool = False,
     reference_coordinate_system: str = "global",
+    inplace: bool = True,
 ) -> SpatialData | DataArray | tuple[DataArray, BaseTransformation]:
     # build model
     if isinstance(segmentation_channel, str):
@@ -2609,11 +2630,34 @@ def segment_tma(
         image_name=image_name,
         reference_coordinate_system=reference_coordinate_system,
     )
+    
+    def _get_shapely_affine_from_matrix(matrix):
+        """Get a shapely affine from a matrix."""
+        a = matrix[0, 0]
+        b = matrix[0, 1]
+        d = matrix[1, 0]
+        e = matrix[1, 1]
+
+        xoff = matrix[0, 2]
+        yoff = matrix[1, 2]
+
+        return (a, b, d, e, xoff, yoff)
+
+    if tiling_shapes is not None and isinstance(tiling_shapes, str):
+        ts_transforms = get_transformation_between_coordinate_systems(
+            spatialdata, spatialdata[tiling_shapes], 
+            reference_coordinate_system)
+        affine = ts_transforms.to_affine_matrix(("x", "y"), ("x", "y"))
+        shapely_affine = _get_shapely_affine_from_matrix(affine)
+        tiling_shapes_transformed = spatialdata.shapes[tiling_shapes].copy()
+        tiling_shapes_transformed["geometry"] = \
+            tiling_shapes_transformed["geometry"].affine_transform(
+                shapely_affine)
 
     output = model.segment_all(
         scale="scale0",
         segmentation_channel=segmentation_channel,
-        tiling_shapes=tiling_shapes,
+        tiling_shapes=tiling_shapes_transformed,
         model_type=model_type,
         nuclei_diam_um=nuclei_diam_um,
         channel_merge_method=channel_merge_method,
@@ -2626,15 +2670,74 @@ def segment_tma(
         denoise_model=denoise_model,
         preview=preview,
     )
+    segmentation_mask, transformations = output
 
-    return output
+    if inplace:
+        model.save_segmentation(
+            segmentation_mask, transformations, output_segmentation_label)
+        return model.sdata
+    else:
+        return segmentation_mask, transformations
 
-
-def measure_labels(
+def measure_tma(
     spatialdata: SpatialData,
-    label_name: str,
-    tiling_shapes: gpd.GeoDataFrame | None = None,
+    image_name: str,
+    segmentation_name: str,
+    output_table_name: str,
+    tiling_shapes: str | None = None,
     extended_properties: bool = False,
     intensity_mode: Literal["mean", "median"] = "mean",
+    reference_coordinate_system: str = "global",
+    inplace: bool = True,
 ) -> SpatialData | tuple[pd.DataFrame, pd.DataFrame]:
-    print()
+    
+    model = TMAMeasurer(
+        sdata=spatialdata,
+        image_name=image_name,
+        reference_coordinate_system=reference_coordinate_system
+    )
+
+    segmentation_data_arr = model.sdata.labels[segmentation_name]
+
+    def _get_shapely_affine_from_matrix(matrix):
+        """Get a shapely affine from a matrix."""
+        a = matrix[0, 0]
+        b = matrix[0, 1]
+        d = matrix[1, 0]
+        e = matrix[1, 1]
+
+        xoff = matrix[0, 2]
+        yoff = matrix[1, 2]
+
+        return (a, b, d, e, xoff, yoff)
+
+    if tiling_shapes is not None and isinstance(tiling_shapes, str):
+        ts_transforms = get_transformation_between_coordinate_systems(
+            spatialdata, spatialdata[tiling_shapes], 
+            reference_coordinate_system)
+        affine = ts_transforms.to_affine_matrix(("x", "y"), ("x", "y"))
+        shapely_affine = _get_shapely_affine_from_matrix(affine)
+        tiling_shapes_transformed = spatialdata.shapes[tiling_shapes].copy()
+        tiling_shapes_transformed["geometry"] = \
+            tiling_shapes_transformed["geometry"].affine_transform(
+                shapely_affine)
+    
+    results = model.measure_labels(
+        labels=segmentation_data_arr,
+        labels_name=segmentation_name,
+        tiling_shapes=tiling_shapes_transformed,
+        extended_properties=extended_properties,
+        intensity_mode=intensity_mode,
+    )
+
+    adata, CELL_INDEX_LABEL = results
+
+    if inplace:
+        model.save_measurements(
+            adata, segmentation_name, output_table_name=output_table_name,
+            instance_key=CELL_INDEX_LABEL,
+        )
+        return model.sdata
+    else:
+        return results
+    
