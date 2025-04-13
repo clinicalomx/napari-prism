@@ -3,6 +3,6 @@ from importlib.metadata import version
 
 __version__ = version("napari-prism")
 
-from . import im, pl, pp, tl
+from . import im, pl, pp, tl, io
 
-__all__ = ["im", "pp", "tl", "im", "pl"]
+__all__ = ["im", "pp", "tl", "im", "pl", "io"]

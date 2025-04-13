@@ -578,7 +578,6 @@ class MultiScaleImageOperations(SdataImageOperations):
         ), "Unequal downsampling factors for X and Y"
         return ds_factor_x
 
-
 class TMAMasker(MultiScaleImageOperations):
     """Class for performing image masking operations on tissue microarray
     images."""

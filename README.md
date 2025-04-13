@@ -31,6 +31,7 @@ The package was designed to be used completely within the [napari] application a
 ```
 python==3.10
 spatialdata<=0.2.5.post0
+spatialdata-plot<=0.2.7
 napari[all]>=0.4.19.post1
 napari_matplotlib<2.0.2
 napari_spatialdata<=0.5.3

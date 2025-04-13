@@ -15,7 +15,6 @@ from napari_prism.widgets.tma_ops._tma_image_widgets import (
     UtilsNapariWidget,
 )
 
-
 class TMAImageAnalysisParentWidget(QTabWidget):
     """UI tabs."""
 

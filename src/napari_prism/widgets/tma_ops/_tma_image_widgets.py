@@ -524,6 +524,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
         )
 
         masks, transformation_sequence, channel_label, masks_gdf = results
+        masks = masks.astype(np.int32)
         self.latest_masks = masks
         self.latest_transforms = transformation_sequence
         self.latest_channel_label = channel_label
@@ -542,10 +543,12 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             affine=affine,
             # For saving later
             metadata={
+                "sdata": self.model.sdata,
                 "masks": masks,
                 "transforms": transformation_sequence,
                 "channel_label": channel_label,
                 "masks_gdf": masks_gdf,
+                "name": channel_label + "_mask"
             },
         )
 
