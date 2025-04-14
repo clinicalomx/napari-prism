@@ -15,6 +15,7 @@ from napari_prism.widgets.tma_ops._tma_image_widgets import (
     UtilsNapariWidget,
 )
 
+
 class TMAImageAnalysisParentWidget(QTabWidget):
     """UI tabs."""
 
@@ -65,11 +66,6 @@ class TMAImageAnalysisParentWidget(QTabWidget):
                     init_selected.metadata["name"],
                 )
 
-        self.utils = UtilsNapariWidget(self.viewer, init_model_masker)
-        #        self.utils.max_width = 475
-        self.utils.max_height = 500
-        self.addTab(self.utils.native, "Utils")
-
         self.masker = TMAMaskerNapariWidget(self.viewer, init_model_masker)
         #        self.masker.max_width = 475
         self.masker.max_height = 700
@@ -86,7 +82,7 @@ class TMAImageAnalysisParentWidget(QTabWidget):
             self.viewer, init_model_segmenter
         )
         #        self.segmenter.max_width = 475
-        self.segmenter.max_height = 700
+        self.segmenter.max_height = 500
         self.addTab(self.segmenter.native, "Segmenter")
 
         self.measurer = TMAMeasurerNapariWidget(
@@ -95,6 +91,11 @@ class TMAImageAnalysisParentWidget(QTabWidget):
         #        self.measurer.max_width = 475
         self.measurer.max_height = 400
         self.addTab(self.measurer.native, "ExpressionMeasurer")
+
+        self.utils = UtilsNapariWidget(self.viewer, init_model_masker)
+        #        self.utils.max_width = 475
+        self.utils.max_height = 500
+        self.addTab(self.utils.native, "Utilities")
 
     def on_selection_change(self):
         """When layer changes, do the following actions;"""
@@ -108,6 +109,7 @@ class TMAImageAnalysisParentWidget(QTabWidget):
         ANNOTATION_LABEL = "tma_label"
         if (
             "_columns_df" in layer.metadata
+            and layer.metadata["_columns_df"] is not None
             and ANNOTATION_LABEL in layer.metadata["_columns_df"]
         ):
             annot_label_vals = layer.metadata["_columns_df"][ANNOTATION_LABEL]

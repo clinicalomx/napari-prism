@@ -8,7 +8,6 @@ from magicgui.widgets import ComboBox, Container, Label, Table, create_widget
 from napari.utils.events import EmitterGroup
 from spatialdata import SpatialData
 
-from napari_prism.models._utils import overwrite_element
 from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 
@@ -380,9 +379,9 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                 self.sdata[self.sample_adata_selection.value] = (
                     feature_struct_out
                 )
-                overwrite_element(
-                    self.sdata, self.sample_adata_selection.value
-                )
+                # overwrite_element(
+                #     self.sdata, self.sample_adata_selection.value
+                # )
                 self.events.sdata_changed(sdata=self.sdata)
 
             # self.aggregation_functions_container.extend(

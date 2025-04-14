@@ -33,6 +33,9 @@ from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
 from napari_prism import pp  # refactored preprocessing class to funcs only
+from napari_prism.models._utils import (
+    overwrite_element as disk_overwrite_element,
+)
 from napari_prism.models.adata_ops.cell_typing._augmentation import (
     add_obs_as_var,
     subset_adata_by_obs_category,
@@ -163,26 +166,25 @@ class AnnDataTreeWidget(BaseNapariWidget):
         self.root_path = table_path
         self.create_parameter_widgets()
 
-    def delete_from_disk(
-        self, sdata: SpatialData, element_name: str, overwrite: bool
-    ) -> None:
+    def delete_from_disk(self, sdata: SpatialData, element_name: str) -> None:
         if (
             element_name in sdata
             and len(sdata.locate_element(sdata[element_name])) != 0
         ):
-            if overwrite:
-                with self._write_lock:
-                    logger.info(f"Overwriting {element_name}")
-                    del sdata[element_name]
+            with self._write_lock:
+                logger.info(f"Overwriting {element_name}")
+                del sdata[element_name]
+                _, on_disk = sdata._symmetric_difference_with_zarr_store()
+                on_disk = [x.split("/")[-1] for x in on_disk]
+                if element_name in on_disk:
                     sdata.delete_element_from_disk(element_name)
-            else:
-                raise OSError(
-                    f"`{element_name}` already exists. Use overwrite="
-                    "True to rewrite."
-                )
 
     def overwrite_element(
-        self, sdata: SpatialData, element: Schema_t, element_name: str
+        self,
+        sdata: SpatialData,
+        element: Schema_t,
+        element_name: str,
+        disk_overwrite: bool = False,
     ) -> None:
         """Overwrite an element in the SpatialData object with a new element.
         If the element already exists, it will be replaced.
@@ -196,15 +198,15 @@ class AnnDataTreeWidget(BaseNapariWidget):
             element: The new element to add.
             element_name: The name of the element to add.
         """
-
-        if sdata.is_backed():
-            self.delete_from_disk(sdata, element_name, overwrite=True)
-        sdata[element_name] = element
-        sdata.write_element(element_name, overwrite=True)
+        if disk_overwrite:
+            disk_overwrite_element(sdata, element_name, element)
+        else:  # overwrite only in-memory. the ondisk object not touched
+            sdata[element_name] = element
 
     def save_node(
         self,
         node: AnnDataNodeQT,
+        disk_overwrite: bool = False,
         *args,
         **kwargs,
     ) -> None:
@@ -219,7 +221,9 @@ class AnnDataTreeWidget(BaseNapariWidget):
         table_name = node.store.stem
 
         table = TableModel.parse(table, *args, **kwargs)
-        self.overwrite_element(self.sdata, table, table_name)
+        self.overwrite_element(
+            self.sdata, table, table_name, disk_overwrite=disk_overwrite
+        )
 
     def update_model(self, adata: AnnData, save: bool = True) -> None:
         """Update the selected AnnData node in the tree widget. Broadcasts this
@@ -412,8 +416,14 @@ class AnnDataTreeWidget(BaseNapariWidget):
             agg_action.triggered.connect(lambda: self.aggregate_samples())
             context_menu.addAction(agg_action)
 
+            save_action = QAction("Save to Disk", self.native)
+            save_action.triggered.connect(
+                lambda: self.save_node(item, disk_overwrite=True)
+            )
+            context_menu.addAction(save_action)
+
             # delete action. Root node cannot be deleted.
-            if item.text(0) != "Root":
+            if item.text(0) != "Root":  # root only actions
                 delete_action = QAction("Delete", self.native)
                 delete_action.triggered.connect(lambda: self.delete_node(item))
                 context_menu.addAction(delete_action)

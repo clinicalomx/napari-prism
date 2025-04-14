@@ -6,6 +6,7 @@ import napari
 import numpy as np
 import pandas as pd
 import shapely
+import skimage
 import xarray as xr
 from magicgui.widgets import ComboBox, Select, Table, create_widget
 from napari.qt.threading import thread_worker
@@ -76,12 +77,56 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
             self.overwrite_save_selected_layer
         )
 
+        self.mask_expansion_entry = create_widget(
+            value=0,
+            name="Expand segmentation masks by um units",
+            annotation=float,
+            widget_type="LineEdit",
+            options={"nullable": True},
+        )
+        self.mask_expansion_button = create_widget(
+            value=False,
+            name="Expand segmentation masks",
+            annotation=bool,
+            widget_type="PushButton",
+            options={"enabled": False},
+        )
+        self.mask_expansion_button.changed.connect(self.expand_masks)
+        self.mask_widgets = QHBoxLayout()
+        self.mask_widgets.addWidget(self.mask_expansion_entry.native)
+        self.mask_widgets.addWidget(self.mask_expansion_button.native)
         self.extend(
             [
                 self.add_selected_image_channel_button,
                 self.overwrite_save_selected_layer_button,
             ]
         )
+        self.native.layout().addLayout(self.mask_widgets)
+
+        self.save_sdata_to_disk_button = create_widget(
+            value=False,
+            name="Save in-memory spatialdata elements to disk",
+            annotation=bool,
+            widget_type="PushButton",
+            options={
+                "tooltip": "Saves on-memory elements to on-disk objects."
+            },
+        )
+        self.save_sdata_to_disk_button.changed.connect(self.save_sdata_to_disk)
+        self.native.layout().addWidget(self.save_sdata_to_disk_button.native)
+
+    def save_sdata_to_disk(self):
+        """Save the sdata elements to disk."""
+
+        selected = self.viewer.layers.selection.active
+        if selected is not None and "sdata" in selected.metadata:
+            sdata = selected.metadata["sdata"]
+            mem_elements, _ = sdata._symmetric_difference_with_zarr_store()
+            if len(mem_elements) > 0:
+                for element in mem_elements:
+                    sdata.write_element(element.split("/")[-1])
+        else:
+            print("No sdata found in the selected layer.")
 
     def get_saveable_layers(self, widget=None):
         """Sdata attrs"""
@@ -119,6 +164,7 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
                 )
                 self.overwrite_save_selected_layer_button.enabled = True
                 self.add_selected_image_channel_button.enabled = False
+                self.mask_expansion_button.enabled = False
             elif isinstance(
                 selected.data, napari.layers._multiscale_data.MultiScaleData
             ):
@@ -127,11 +173,20 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
                 )
                 self.add_selected_image_channel_button.enabled = True
                 self.overwrite_save_selected_layer_button.enabled = False
-
+                self.mask_expansion_button.enabled = False
+            elif isinstance(selected, napari.layers.Labels):
+                # Support only labels for now
+                self.model = SingleScaleImageOperations(
+                    selected.metadata["sdata"], selected.metadata["name"]
+                )
+                self.overwrite_save_selected_layer_button.enabled = False
+                self.add_selected_image_channel_button.enabled = False
+                self.mask_expansion_button.enabled = True
             else:
                 self.model = None
                 self.add_selected_image_channel_button.enabled = False
                 self.overwrite_save_selected_layer_button.enabled = False
+                self.mask_expansion_button.enabled = False
 
             self.reset_choices()
 
@@ -140,6 +195,30 @@ class UtilsNapariWidget(MultiScaleImageNapariWidget):
             self.reset_choices()
             self.add_selected_image_channel_button.enabled = False
             self.overwrite_save_selected_layer_button.enabled = False
+
+    def expand_masks(self):
+        layer = self.viewer.layers.selection.active
+
+        expansion_um = float(self.mask_expansion_entry.value)
+        expansion_px = self.model.convert_um_to_px(expansion_um)
+        expanded = skimage.segmentation.expand_labels(layer.data, expansion_px)
+        # inherited_metadata = layer.metadata
+        # inherited_metadata["global_seg_mask"] = expanded
+        self.viewer.add_labels(
+            expanded,
+            name=layer.name + f"_expanded_{expansion_um}um",
+            affine=layer.affine,
+            metadata={
+                "sdata": layer.metadata["sdata"],
+                "global_seg_mask": expanded,
+                "transformation_sequence": layer.metadata[
+                    "transformation_sequence"
+                ],
+                "name": layer.name + f"_expanded_{expansion_um}um",
+                "parent_layer": layer.metadata["parent_layer"],
+                "_current_cs": layer.metadata["_current_cs"],
+            },
+        )
 
     def overwrite_save_selected_layer(self):
         layer = self.viewer.layers.selection.active
@@ -308,21 +387,27 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             self.reset_choices()
             self._generate_masks_button.enabled = True
         else:
-            self.model = None
-            self.reset_choices()
-            self._generate_masks_button.enabled = False
-
-        if (
-            selected is not None
-            and "masks" in selected.metadata
-            and "transforms" in selected.metadata
-            and "channel_label" in selected.metadata
-            and "masks_gdf" in selected.metadata
-            and isinstance(selected, napari.layers.Labels)
-        ):
-            self._save_results_button.enabled = True
-        else:
-            self._save_results_button.enabled = False
+            if (
+                selected is not None
+                and "masks" in selected.metadata
+                and "transforms" in selected.metadata
+                and "channel_label" in selected.metadata
+                and "masks_gdf" in selected.metadata
+                and "parent_layer" in selected.metadata
+                and isinstance(selected, napari.layers.Labels)
+            ):
+                parent = selected.metadata["parent_layer"]
+                self.model = TMAMasker(
+                    parent.metadata["sdata"], parent.metadata["name"]
+                )
+                self.reset_choices()
+                self._save_results_button.enabled = True
+                self._generate_masks_button.enabled = False
+            else:
+                self.model = None
+                self.reset_choices()
+                self._save_results_button.enabled = False
+                self._generate_masks_button.enabled = False
         # self.set_parent_layer(layer)
         # self.model = TMAMasker(
         #     layer.data,
@@ -537,6 +622,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             ("y", "x"), ("y", "x")
         )
         # Show mask in memory to viewer, not as sdata yet
+        parent_layer = self.viewer.layers.selection.active
         self.viewer.add_labels(
             masks,
             name=channel_label + "_mask",
@@ -548,7 +634,9 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
                 "transforms": transformation_sequence,
                 "channel_label": channel_label,
                 "masks_gdf": masks_gdf,
-                "name": channel_label + "_mask"
+                "name": channel_label + "_mask",
+                "parent_layer": parent_layer,
+                "_current_cs": parent_layer.metadata["_current_cs"],
             },
         )
 
@@ -563,17 +651,19 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
             and "transforms" in selected.metadata
             and "channel_label" in selected.metadata
             and "masks_gdf" in selected.metadata
+            and "parent_layer" in selected.metadata
             and isinstance(selected, napari.layers.Labels)
         ):
+            self.update_model()
             self.model.save_masks(
                 selected.metadata["masks"],
-                selected.metadata["channel_label"],
+                selected.name,  # The name in the viewer
                 selected.metadata["transforms"],
             )
 
             self.model.save_shapes(
                 selected.metadata["masks_gdf"],
-                selected.metadata["channel_label"],
+                selected.name,  # The name in the viewer
                 selected.metadata["transforms"],
             )
             self.refresh_sdata_widget()
@@ -631,9 +721,70 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
         )  # Sets self.gff
 
         tma_cores, tma_envelope, envelopes, transforms = results
+        self.latest_tma_cores = tma_cores
+        self.latest_tma_envelope = tma_envelope
+        self.latest_envelopes = envelopes
+        self.latest_transforms = transforms
 
+        # affine = transforms["global"].to_affine_matrix(("y", "x"), ("y", "x"))
+        # parent_layer = self.viewer.layers.selection.active
+
+        # # from napari-spatialdata _viewer.py
+        # simplify = len(envelopes) > config.POLYGON_THRESHOLD
+        # polygons, indices = _get_polygons_properties(envelopes, simplify)
+        # polygons = _transform_coordinates(polygons, f=lambda x: x[::-1])
+
+        # self.viewer.add_shapes(
+        #     polygons,
+        #     name="TMA envelope",
+        #     affine=affine,
+        #     shape_type="polygon",
+        #     edge_color="#12f4f9",
+        #     edge_width=2,
+        #     face_color="#FF0000",
+        #     metadata={
+        #         "sdata": self.model.sdata,
+        #         "tma_envelope": tma_envelope,
+        #         "tma_cores": tma_cores,
+        #         "envelopes": envelopes,
+        #         "name": "TMA envelope",
+        #         "transforms": transforms,
+        #         "parent_layer": parent_layer,
+        #         "_current_cs": parent_layer.metadata["_current_cs"],
+        #     },
+        # )
+        self.model.save_dearray_results(
+            tma_cores=tma_cores,
+            tma_envelope=tma_envelope,
+            envelopes=envelopes,
+            transforms=transforms,
+        )
         self.refresh_sdata_widget()
+        # Add tma_envelope
+        self.get_sdata_widget()._onClick("tma_envelope")
+
         # TODO: Create coordainte system from bboxes ?
+
+    def _save_selected_layer_to_sdata(self):
+        selected = self.viewer.layers.selection.active
+        if (
+            selected is not None
+            and "tma_envelope" in selected.metadata
+            and "tma_cores" in selected.metadata
+            and "envelopes" in selected.metadata
+            and "transforms" in selected.metadata
+            and "parent_layer" in selected.metadata
+            and isinstance(selected, napari.layers.Labels)
+        ):
+            self.update_model()
+            self.model.save_dearray_results(
+                tma_cores=selected.metadata["tma_cores"],
+                tma_envelope=selected.metadata["tma_envelope"],
+                envelopes=selected.metadata["envelopes"],
+                transforms=selected.metadata["transforms"],
+            )
+
+            self.refresh_sdata_widget()
 
     def _create_tma_grid_widget(self):
         """Create a TMA grid representation of tickboxes; left labels are the A-I of the grid
@@ -748,13 +899,6 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
         self._dearray_button.changed.connect(self._dearray)
         # self._dearray_button.changed.connect(self._create_tma_grid_widget)
 
-        # NOTE: while spatialdata only does cmaps, can use this to manually add labels
-        self._output_layer_selection_widget = ComboBox(
-            name="OutputLayer",
-            choices=self.get_child_shape_layers,
-            label="Select output layer",
-        )
-
         if self.model is not None:
             self._dearray_button.enabled = True
         else:
@@ -766,20 +910,8 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
                 self._nrows_entry,
                 self._ncols_entry,
                 self._dearray_button,
-                self._output_layer_selection_widget,
             ]
         )
-
-    def get_child_shape_layers(self, widget=None):
-        input_layer_name = self._image_layer_selection_widget.value
-        if input_layer_name is None:
-            return []
-        else:
-            return [
-                x.name
-                for x in self.viewer.layers
-                if isinstance(x, napari.layers.shapes.shapes.Shapes)
-            ]
 
 
 class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
@@ -810,10 +942,42 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             )
             self.reset_choices()
             self._run_segmentation_button.enabled = True
+            self._preview_segmentation_button.enabled = True
         else:
-            self.model = None
-            self.reset_choices()
-            self._run_segmentation_button.enabled = False
+            if (
+                selected is not None
+                and "global_seg_mask" in selected.metadata
+                and "transformation_sequence" in selected.metadata
+                and "parent_layer" in selected.metadata
+                and isinstance(selected, napari.layers.Labels)
+            ):
+                parent = selected.metadata["parent_layer"]
+                self.model = TMASegmenter(
+                    parent.metadata["sdata"], parent.metadata["name"]
+                )
+                self.reset_choices()
+                self._run_segmentation_button.enabled = False
+                self._preview_segmentation_button.enabled = False
+                self._save_segmentation_button.enabled = True
+            else:
+                self.model = None
+                self.reset_choices()
+                self._run_segmentation_button.enabled = False
+                self._preview_segmentation_button.enabled = False
+                self._save_segmentation_button.enabled = False
+
+        # self.viewer.add_labels(
+        #     global_seg_mask,
+        #     name=self.model.image_name + "_segmentation",
+        #     affine=affine,
+        #     metadata={
+        #         "sdata": self.model.sdata,
+        #         "global_seg_mask": global_seg_mask,
+        #         "transformation_sequence": transformation_sequence,
+        #         "name": self.model.image_name + "_segmentation",
+        #         "parent_layer": parent_layer,
+        #         "_current_cs": parent_layer.metadata["_current_cs"],
+        #     },
 
     def get_multiscale_image_shapes(self, widget=None):
         """TODO: temp solution. Until lower scale segmentation is implemented
@@ -867,6 +1031,7 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             choices=self.get_channels,
             label="Select channel(s) for segmentation",
         )
+        self._segmentation_channel_selection.native.setMinimumHeight(100)
 
         self._channel_merge_method_selection = ComboBox(
             name="ChannelMergeMethods",
@@ -955,10 +1120,21 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             annotation=bool,
             widget_type="PushButton",
         )
+        self._save_segmentation_button = create_widget(
+            value=False,
+            name="Save Segmentation",
+            annotation=bool,
+            widget_type="PushButton",
+        )
+        self._save_segmentation_button.changed.connect(
+            self._save_selected_layer_to_sdata
+        )
+
         self._run_segmentation_button.changed.connect(self.run_segmentation)
         self._buttons = QHBoxLayout()
         self._buttons.addWidget(self._preview_segmentation_button.native)
         self._buttons.addWidget(self._run_segmentation_button.native)
+        self._buttons.addWidget(self._save_segmentation_button.native)
 
         self.extend(
             [
@@ -1119,7 +1295,8 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         worker = self._run_segmentation()
         self.disable_function_button(self._run_segmentation_button)
         worker.start()
-        worker.finished.connect(self.post_run_segmentation)
+        worker.returned.connect(self.add_segmentation_layer)
+        # worker.finished.connect(self.post_run_segmentation)
         worker.finished.connect(
             lambda: self.enable_function_button(
                 button=self._run_segmentation_button
@@ -1127,17 +1304,47 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         )
         worker.finished.connect(self.refresh_sdata_widget)
 
-    def post_run_segmentation(self):
-        seg_name = self.model.image_name + "_labels"
-        if seg_name in self.viewer.layers:
-            labels = get_selected_layer(
-                self.viewer, self.model.image_name + "_labels"
-            )
-            self.viewer.layers.remove(labels)
-            sdata_widget = self.get_sdata_widget()
-            sdata_widget._onClick(
-                text=labels.name
-            )  # mimick re-adding the layer
+    def add_segmentation_layer(self, out):
+        global_seg_mask, transformation_sequence = out
+        affine = transformation_sequence.to_affine_matrix(
+            ("y", "x"), ("x", "y")
+        )
+        parent_layer = self.viewer.layers.selection.active
+
+        global_seg_mask = xr.DataArray(
+            global_seg_mask.T,
+            dims=("y", "x"),
+            coords={
+                "y": np.arange(global_seg_mask.shape[1]),
+                "x": np.arange(global_seg_mask.shape[0]),
+            },
+        )
+
+        self.viewer.add_labels(
+            global_seg_mask,
+            name=self.model.image_name + "_segmentation",
+            affine=affine,
+            metadata={
+                "sdata": self.model.sdata,
+                "global_seg_mask": global_seg_mask,
+                "transformation_sequence": transformation_sequence,
+                "name": self.model.image_name + "_segmentation",
+                "parent_layer": parent_layer,
+                "_current_cs": parent_layer.metadata["_current_cs"],
+            },
+        )
+
+    # def post_run_segmentation(self):
+    #     seg_name = self.model.image_name + "_labels"
+    #     if seg_name in self.viewer.layers:
+    #         labels = get_selected_layer(
+    #             self.viewer, self.model.image_name + "_labels"
+    #         )
+    #         self.viewer.layers.remove(labels)
+    #         sdata_widget = self.get_sdata_widget()
+    #         sdata_widget._onClick(
+    #             text=labels.name
+    #         )  # mimick re-adding the layer
 
     @thread_worker
     def _run_segmentation(self):
@@ -1187,6 +1394,26 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         )
         if out is not None:
             return out
+
+    def _save_selected_layer_to_sdata(self):
+        selected = self.viewer.layers.selection.active
+        if (
+            selected is not None
+            and "global_seg_mask" in selected.metadata
+            and "transformation_sequence" in selected.metadata
+            and "parent_layer" in selected.metadata
+            and isinstance(selected, napari.layers.Labels)
+        ):
+            self.update_model()
+            self.model.save_segmentation(
+                global_seg_mask=selected.metadata["global_seg_mask"],
+                label_name=selected.name,
+                transformation_sequence=selected.metadata[
+                    "transformation_sequence"
+                ],
+            )
+
+            self.refresh_sdata_widget()
 
 
 class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
@@ -1243,7 +1470,7 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
 
         self._measure_labels_button = create_widget(
             value=False,
-            name="Measure",
+            name="Save Measurements",
             annotation=bool,
             widget_type="PushButton",
             options={
@@ -1253,9 +1480,22 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
                 )
             },
         )
+
         if self.model is None:
             self._measure_labels_button.enabled = False
         self._measure_labels_button.changed.connect(self.measure_labels)
+
+        self._adata_name_entry = create_widget(
+            value="adata",
+            label="AnnData label",
+            name="AnnData name",
+            annotation=str,
+            widget_type="LineEdit",
+        )
+
+        self._buttons = QHBoxLayout()
+        self._buttons.addWidget(self._adata_name_entry.native)
+        self._buttons.addWidget(self._measure_labels_button.native)
 
         self.extend(
             [
@@ -1263,9 +1503,11 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
                 self._tiling_shape_layer_selection,
                 self._extended_properties_toggle,
                 self._intensity_mode_selection,
-                self._measure_labels_button,
+                # self._measure_labels_button,
             ]
         )
+
+        self.native.layout().addLayout(self._buttons)
 
     def enable_function_button(self):
         self._measure_labels_button.enabled = True
@@ -1279,7 +1521,7 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
             for x in self.viewer.layers
             if isinstance(x, napari.layers.labels.labels.Labels)
             and "sdata" in x.metadata
-            and "adata" in x.metadata
+            # and "adata" in x.metadata
         ]
 
     def get_tiling_shape_layers(self, widget=None):
@@ -1322,6 +1564,7 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
     def measure_labels(self):
         worker = self._measure_labels()
         worker.start()
+        worker.returned.connect(self.annotate_labels_with_adata)
         worker.finished.connect(self.post_measure_labels)
 
     def post_measure_labels(self):
@@ -1336,6 +1579,19 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
         sdata_widget = self.get_sdata_widget()
         sdata_widget._onClick(text=labels.name)  # mimick re-adding the layer
         self.enable_function_button()
+
+    def annotate_labels_with_adata(self, out):
+        adata, cell_index_label = out
+        labels_layer = get_selected_layer(
+            self.viewer, self._segmentation_layer_selection
+        )
+        # Add as metadata layer to sdata;
+        self.model.save_measurements(
+            adata=adata,
+            output_table_name=self._adata_name_entry.value,
+            label_name=labels_layer.name,
+            instance_key=cell_index_label,
+        )
 
     @thread_worker
     def _measure_labels(self):
@@ -1369,10 +1625,13 @@ class TMAMeasurerNapariWidget(MultiScaleImageNapariWidget):
         labels = get_selected_layer(
             self.viewer, self._segmentation_layer_selection
         )
-
-        self.model.measure_labels(
+        assert isinstance(
+            labels.data, xr.core.dataarray.DataArray
+        ), "Selected layer must be a DataArray."
+        return self.model.measure_labels(
             labels=labels.data,
             tiling_shapes=data_sd,
             extended_properties=self._extended_properties_toggle.value,
             intensity_mode=self._intensity_mode_selection.value,
+            labels_name=labels.name,
         )

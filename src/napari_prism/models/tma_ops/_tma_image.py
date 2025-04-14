@@ -578,6 +578,7 @@ class MultiScaleImageOperations(SdataImageOperations):
         ), "Unequal downsampling factors for X and Y"
         return ds_factor_x
 
+
 class TMAMasker(MultiScaleImageOperations):
     """Class for performing image masking operations on tissue microarray
     images."""
@@ -1620,24 +1621,28 @@ class TMADearrayer(SingleScaleImageOperations):
 
         return tma_cores, tma_envelope, envelopes, self.transforms
 
-    def save_dearray_results(self, tma_cores, tma_envelope, envelopes):
+    def save_dearray_results(
+        self, tma_cores, tma_envelope, envelopes, transforms=None
+    ):
+        if transforms is None:
+            transforms = self.transforms
         self.add_shapes(
             tma_cores,
             "tma_core",
-            write_element=True,
-            transformations=self.transforms,
+            write_element=False,
+            transformations=transforms,
         )
         self.add_shapes(
             tma_envelope,
             "tma_envelope",
-            write_element=True,
-            transformations=self.transforms,
+            write_element=False,
+            transformations=transforms,
         )
 
         self.add_table(
             envelopes,
             "tma_table",
-            write_element=True,
+            write_element=False,
             region="tma_envelope",  # element name
             region_key="lyr",  # region
             instance_key="instance_id",
@@ -2057,7 +2062,7 @@ class TMASegmenter(MultiScaleImageOperations):
                 else:
                     if "tma_label" in tiling_shapes.columns:
                         bbox_labels = list(tiling_shapes["tma_label"])
-                    else: # last resort
+                    else:  # last resort
                         bbox_labels = list(geoms.index.astype(str))
 
                 # Prepare image tiles
@@ -2097,7 +2102,7 @@ class TMASegmenter(MultiScaleImageOperations):
                     multichannel_image.sizes["x"],
                     multichannel_image.sizes["y"],
                 )
-                global_seg_mask = np.empty(working_shape, dtype=np.int32)
+                global_seg_mask = np.zeros(working_shape, dtype=np.int32)
                 for i, bbox in enumerate(bboxes_rast):
                     ix = i + 1
                     logger.info(
@@ -2234,6 +2239,7 @@ class TMASegmenter(MultiScaleImageOperations):
             # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
         )
 
+
 class TMAMeasurer(MultiScaleImageOperations):
     """Class for measuring statistics of cells in TMA cores. Uses skimage.
     measure.regionprops_table for the measurements."""
@@ -2281,6 +2287,8 @@ class TMAMeasurer(MultiScaleImageOperations):
         if (
             labels.shape != intensity_image.shape[1:]
         ):  # Exclude channel c dim, yx only
+            print(labels.shape)
+            print(intensity_image.shape[1:])
             raise ValueError(
                 "Labels and intensity image must have the same shape."
             )
@@ -2299,17 +2307,21 @@ class TMAMeasurer(MultiScaleImageOperations):
             intensity_mode,
         ) -> tuple[pd.DataFrame, pd.DataFrame]:
             labels = labels.transpose("x", "y")
+            arr = labels.data
+            if not isinstance(arr, np.ndarray):
+                arr = arr.compute()
+
             intensity_image = intensity_image.transpose("x", "y", "c")
             if intensity_mode == "mean":
                 label_props_table = skimage.measure.regionprops_table(
-                    labels.data.compute(),  # DataArray + Dask -> np.array
+                    arr,  # DataArray + Dask -> np.array
                     intensity_image=intensity_image.data.compute(),
                     properties=properties,
                 )
             elif intensity_mode == "median":
                 properties.remove("intensity_mean")
                 label_props_table = skimage.measure.regionprops_table(
-                    labels.data.compute(),  # DataArray + Dask -> np.array
+                    arr,  # DataArray + Dask -> np.array
                     intensity_image=intensity_image.data.compute(),
                     properties=properties,
                     extra_properties=(intensity_median,),
@@ -2416,17 +2428,19 @@ class TMAMeasurer(MultiScaleImageOperations):
         )
         new_var["intensity_mode"] = intensity_mode
 
+        spatial_px = obs_like[["centroid_x", "centroid_y"]].values
+        spatial_um = spatial_px * self.get_px_per_um()
         adata = ad.AnnData(
             intensities.values,
             obs=obs_like,
-            obsm={"spatial": obs_like[["centroid_x", "centroid_y"]].values},
+            obsm={"spatial_px": spatial_px, "spatial_um": spatial_um},
             var=new_var,
         )
 
         # adata_parsed = TableModel.parse(adata)
 
         return adata, CELL_INDEX_LABEL
-    
+
     def save_measurements(
         self,
         adata: AnnData,
@@ -2549,10 +2563,7 @@ def dearray_tma(
     model = TMADearrayer(sdata=spatialdata, image_name=label_name)
 
     # Look for masks_gdf if provided
-    if label_name + "_poly" in model.sdata.shapes:
-        masks_gdf = model.sdata.shapes[label_name + "_poly"]
-    else:
-        masks_gdf = None
+    masks_gdf = model.sdata.shapes.get(label_name + "_poly", None)
 
     # Run dearray
     results = model.dearray_and_envelope_tma_cores(
@@ -2578,7 +2589,8 @@ def segment_tma(
     segmentation_channel: str | list[str],  # Segmentation channel(s)
     tiling_shapes: gpd.GeoDataFrame | None = None,
     model_type: Literal[
-        "cyto3",        "cyto2",
+        "cyto3",
+        "cyto2",
         "cyto",
         "nuclei",
         "tissuenet_cp3",
@@ -2629,7 +2641,7 @@ def segment_tma(
         image_name=image_name,
         reference_coordinate_system=reference_coordinate_system,
     )
-    
+
     def _get_shapely_affine_from_matrix(matrix):
         """Get a shapely affine from a matrix."""
         a = matrix[0, 0]
@@ -2644,14 +2656,16 @@ def segment_tma(
 
     if tiling_shapes is not None and isinstance(tiling_shapes, str):
         ts_transforms = get_transformation_between_coordinate_systems(
-            spatialdata, spatialdata[tiling_shapes], 
-            reference_coordinate_system)
+            spatialdata,
+            spatialdata[tiling_shapes],
+            reference_coordinate_system,
+        )
         affine = ts_transforms.to_affine_matrix(("x", "y"), ("x", "y"))
         shapely_affine = _get_shapely_affine_from_matrix(affine)
         tiling_shapes_transformed = spatialdata.shapes[tiling_shapes].copy()
-        tiling_shapes_transformed["geometry"] = \
-            tiling_shapes_transformed["geometry"].affine_transform(
-                shapely_affine)
+        tiling_shapes_transformed["geometry"] = tiling_shapes_transformed[
+            "geometry"
+        ].affine_transform(shapely_affine)
 
     output = model.segment_all(
         scale="scale0",
@@ -2673,10 +2687,12 @@ def segment_tma(
 
     if inplace:
         model.save_segmentation(
-            segmentation_mask, transformations, output_segmentation_label)
+            segmentation_mask, transformations, output_segmentation_label
+        )
         return model.sdata
     else:
         return segmentation_mask, transformations
+
 
 def measure_tma(
     spatialdata: SpatialData,
@@ -2689,11 +2705,10 @@ def measure_tma(
     reference_coordinate_system: str = "global",
     inplace: bool = True,
 ) -> SpatialData | tuple[pd.DataFrame, pd.DataFrame]:
-    
     model = TMAMeasurer(
         sdata=spatialdata,
         image_name=image_name,
-        reference_coordinate_system=reference_coordinate_system
+        reference_coordinate_system=reference_coordinate_system,
     )
 
     segmentation_data_arr = model.sdata.labels[segmentation_name]
@@ -2712,15 +2727,17 @@ def measure_tma(
 
     if tiling_shapes is not None and isinstance(tiling_shapes, str):
         ts_transforms = get_transformation_between_coordinate_systems(
-            spatialdata, spatialdata[tiling_shapes], 
-            reference_coordinate_system)
+            spatialdata,
+            spatialdata[tiling_shapes],
+            reference_coordinate_system,
+        )
         affine = ts_transforms.to_affine_matrix(("x", "y"), ("x", "y"))
         shapely_affine = _get_shapely_affine_from_matrix(affine)
         tiling_shapes_transformed = spatialdata.shapes[tiling_shapes].copy()
-        tiling_shapes_transformed["geometry"] = \
-            tiling_shapes_transformed["geometry"].affine_transform(
-                shapely_affine)
-    
+        tiling_shapes_transformed["geometry"] = tiling_shapes_transformed[
+            "geometry"
+        ].affine_transform(shapely_affine)
+
     results = model.measure_labels(
         labels=segmentation_data_arr,
         labels_name=segmentation_name,
@@ -2733,10 +2750,11 @@ def measure_tma(
 
     if inplace:
         model.save_measurements(
-            adata, segmentation_name, output_table_name=output_table_name,
+            adata,
+            segmentation_name,
+            output_table_name=output_table_name,
             instance_key=CELL_INDEX_LABEL,
         )
         return model.sdata
     else:
         return results
-    

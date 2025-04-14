@@ -157,9 +157,14 @@ def harmony(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
     adjusted_basis = f"{basis}_harmony"
 
     # In-place operation if rsc,
-    sc_backend.pp.harmony_integrate(
-        adata, key, basis=basis, adjusted_basis=adjusted_basis, **kwargs
-    )
+    if _current_backend["module"] == "scanpy":
+        sc_backend.external.pp.harmony_integrate(
+            adata, key, basis=basis, adjusted_basis=adjusted_basis, **kwargs
+        )
+    else:  # rapids
+        sc_backend.pp.harmony_integrate(
+            adata, key, basis=basis, adjusted_basis=adjusted_basis, **kwargs
+        )
 
     if copy:
         return adata
