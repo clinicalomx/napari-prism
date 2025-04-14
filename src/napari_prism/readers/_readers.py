@@ -461,11 +461,14 @@ class PrismInteractive(Interactive):
             "napari-prism", "AnnData Analysis", tabify=True
         )
 
+
 def qptiff(path: str | Path, write_zarr: bool = False):
     return QptiffReader(path).to_spatialdata()
 
+
 def ometiff(path: str | Path, write_zarr: bool = False):
     return OmeTiffReader(path).to_spatialdata()
+
 
 def napari_spatialdata_with_prism_reader(path: str | Path):
     """Read .zarr file into napari_spatialdata reader, with TMA plugins"""
@@ -476,6 +479,7 @@ def napari_spatialdata_with_prism_reader(path: str | Path):
     sdata = SpatialData.read(path)
     _ = PrismInteractive(sdata, headless=True)
     return [(None,)]
+
 
 def napari_get_reader(path: str):
     """
