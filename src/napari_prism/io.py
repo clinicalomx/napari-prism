@@ -1,6 +1,6 @@
 from .readers._readers import (
-    qptiff,
     ometiff,
+    qptiff,
 )
 
 __all__ = [

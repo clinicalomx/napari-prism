@@ -229,7 +229,7 @@ class SdataImageOperations:
             raise ValueError("Invalid method for multichannel projection")
 
         # Add the c dim back for logging of what the slice represents
-        c_name = f'{method}[{"_".join(channels)}]'  # + "_" + method
+        c_name = f"{method}[{'_'.join(channels)}]"  # + "_" + method
         # Keep the c dim as a scalar
         compacted = compacted.expand_dims(c=[1])
         compacted = compacted.assign_coords(c=[c_name])
@@ -577,6 +577,7 @@ class MultiScaleImageOperations(SdataImageOperations):
             ds_factor_x == ds_factor_y
         ), "Unequal downsampling factors for X and Y"
         return ds_factor_x
+
 
 class TMAMasker(MultiScaleImageOperations):
     """Class for performing image masking operations on tissue microarray
@@ -2057,7 +2058,7 @@ class TMASegmenter(MultiScaleImageOperations):
                 else:
                     if "tma_label" in tiling_shapes.columns:
                         bbox_labels = list(tiling_shapes["tma_label"])
-                    else: # last resort
+                    else:  # last resort
                         bbox_labels = list(geoms.index.astype(str))
 
                 # Prepare image tiles
@@ -2233,6 +2234,7 @@ class TMASegmenter(MultiScaleImageOperations):
             transformations={"global": transformation_sequence},
             # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
         )
+
 
 class TMAMeasurer(MultiScaleImageOperations):
     """Class for measuring statistics of cells in TMA cores. Uses skimage.
@@ -2426,7 +2428,7 @@ class TMAMeasurer(MultiScaleImageOperations):
         # adata_parsed = TableModel.parse(adata)
 
         return adata, CELL_INDEX_LABEL
-    
+
     def save_measurements(
         self,
         adata: AnnData,
@@ -2578,7 +2580,8 @@ def segment_tma(
     segmentation_channel: str | list[str],  # Segmentation channel(s)
     tiling_shapes: gpd.GeoDataFrame | None = None,
     model_type: Literal[
-        "cyto3",        "cyto2",
+        "cyto3",
+        "cyto2",
         "cyto",
         "nuclei",
         "tissuenet_cp3",
@@ -2629,7 +2632,7 @@ def segment_tma(
         image_name=image_name,
         reference_coordinate_system=reference_coordinate_system,
     )
-    
+
     def _get_shapely_affine_from_matrix(matrix):
         """Get a shapely affine from a matrix."""
         a = matrix[0, 0]
@@ -2644,14 +2647,16 @@ def segment_tma(
 
     if tiling_shapes is not None and isinstance(tiling_shapes, str):
         ts_transforms = get_transformation_between_coordinate_systems(
-            spatialdata, spatialdata[tiling_shapes], 
-            reference_coordinate_system)
+            spatialdata,
+            spatialdata[tiling_shapes],
+            reference_coordinate_system,
+        )
         affine = ts_transforms.to_affine_matrix(("x", "y"), ("x", "y"))
         shapely_affine = _get_shapely_affine_from_matrix(affine)
         tiling_shapes_transformed = spatialdata.shapes[tiling_shapes].copy()
-        tiling_shapes_transformed["geometry"] = \
-            tiling_shapes_transformed["geometry"].affine_transform(
-                shapely_affine)
+        tiling_shapes_transformed["geometry"] = tiling_shapes_transformed[
+            "geometry"
+        ].affine_transform(shapely_affine)
 
     output = model.segment_all(
         scale="scale0",
@@ -2673,10 +2678,12 @@ def segment_tma(
 
     if inplace:
         model.save_segmentation(
-            segmentation_mask, transformations, output_segmentation_label)
+            segmentation_mask, transformations, output_segmentation_label
+        )
         return model.sdata
     else:
         return segmentation_mask, transformations
+
 
 def measure_tma(
     spatialdata: SpatialData,
@@ -2689,11 +2696,10 @@ def measure_tma(
     reference_coordinate_system: str = "global",
     inplace: bool = True,
 ) -> SpatialData | tuple[pd.DataFrame, pd.DataFrame]:
-    
     model = TMAMeasurer(
         sdata=spatialdata,
         image_name=image_name,
-        reference_coordinate_system=reference_coordinate_system
+        reference_coordinate_system=reference_coordinate_system,
     )
 
     segmentation_data_arr = model.sdata.labels[segmentation_name]
@@ -2712,15 +2718,17 @@ def measure_tma(
 
     if tiling_shapes is not None and isinstance(tiling_shapes, str):
         ts_transforms = get_transformation_between_coordinate_systems(
-            spatialdata, spatialdata[tiling_shapes], 
-            reference_coordinate_system)
+            spatialdata,
+            spatialdata[tiling_shapes],
+            reference_coordinate_system,
+        )
         affine = ts_transforms.to_affine_matrix(("x", "y"), ("x", "y"))
         shapely_affine = _get_shapely_affine_from_matrix(affine)
         tiling_shapes_transformed = spatialdata.shapes[tiling_shapes].copy()
-        tiling_shapes_transformed["geometry"] = \
-            tiling_shapes_transformed["geometry"].affine_transform(
-                shapely_affine)
-    
+        tiling_shapes_transformed["geometry"] = tiling_shapes_transformed[
+            "geometry"
+        ].affine_transform(shapely_affine)
+
     results = model.measure_labels(
         labels=segmentation_data_arr,
         labels_name=segmentation_name,
@@ -2733,10 +2741,11 @@ def measure_tma(
 
     if inplace:
         model.save_measurements(
-            adata, segmentation_name, output_table_name=output_table_name,
+            adata,
+            segmentation_name,
+            output_table_name=output_table_name,
             instance_key=CELL_INDEX_LABEL,
         )
         return model.sdata
     else:
         return results
-    
