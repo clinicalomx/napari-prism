@@ -10,6 +10,7 @@
 [![tests](https://github.com/clinicalomx/napari-prism/workflows/tests/badge.svg)](https://github.com/clinicalomx/napari-prism/actions)
 [![codecov](https://codecov.io/gh/clinicalomx/napari-prism/branch/main/graph/badge.svg)](https://codecov.io/gh/clinicalomx/napari-prism)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-prism)](https://napari-hub.org/plugins/napari-prism)
+[![miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)](https://www.anaconda.com/docs/getting-started/miniconda/install)
 
 **NOTE: PRISM is still in heavy development.**
 PRISM or napari-prism is a package and [napari] plugin designed for interactively processing, analysing and visualising multiplxed tissue microarrays.
@@ -26,8 +27,25 @@ PRISM uses [spatialdata] as the core data framework, allowing for:
 
 The package was designed to be used completely within the [napari] application and therefore require little to no knowledge of Python programming. Documentation for usage via the API is currently in progress.
 
-## Requirements
+## Environment Setup
 
+Install [miniconda] or anaconda.
+
+Create a CPU-only environment:
+    ```
+    conda create -n prism python=3.10 jupyterlab -c conda-forge
+    ```
+
+Or, create a GPU-compatible environment (for example, CUDA=12.5):
+    ```
+    conda create -n prism python=3.10 jupyterlab nvidia/label/cuda-12.5.0::cuda -c conda-forge
+    ```
+Activate the environment before executing the following installation instructions.
+    ```
+    conda activate prism
+    ```
+
+### List of Dependencies
 ```
 python==3.10
 spatialdata<=0.2.5.post0
