@@ -5,6 +5,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from anndata import AnnData
+from pandas import DataFrame, Series
 
 
 class ClusteringSearchEvaluator:
@@ -67,7 +68,7 @@ class ClusteringSearchEvaluator:
         self.ml_backend = backend
         self.ml = metrics
 
-    def get_K(self, k: int) -> pd.DataFrame:
+    def get_K(self, k: int) -> DataFrame:
         """
         Gets the clustering search run subset to a given `k`.
 
@@ -86,7 +87,7 @@ class ClusteringSearchEvaluator:
         cluster_df.columns.name = "R"
         return cluster_df
 
-    def get_K_R(self, k, r) -> pd.Series:
+    def get_K_R(self, k, r) -> Series:
         """
         Returns the cluster labels from a given clustering run with a given
         `k` and `r`.
@@ -103,7 +104,7 @@ class ClusteringSearchEvaluator:
         # assert all(labels.index == self.adata.obs.index)
         return labels
 
-    def get_annotated_cluster_labels(self) -> pd.DataFrame:
+    def get_annotated_cluster_labels(self) -> DataFrame:
         """
         Return the cluster label matrix with multi-indexed columns for `k`
         and `r`.
@@ -123,7 +124,7 @@ class ClusteringSearchEvaluator:
 
     def between_model_score(
         self, score_function: callable, k: int | None = None, **kwargs
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """
         Return a pairwise array of quality scores between every other
         clustering run.
@@ -183,7 +184,7 @@ class ClusteringSearchEvaluator:
 
     def within_model_score(
         self, score_function: callable, k: int | None = None, **kwargs
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """Return an array of quality scores within each clustering run.
         Usually, `score_function` computes a score that assesss how well the
         assigned cluster labels aggregate in some data space."""

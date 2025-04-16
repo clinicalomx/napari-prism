@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import sklearn.neighbors as skn
 from anndata import AnnData
+from pandas import DataFrame
 
 # TODO: make this cpu only
 from phenograph.core import parallel_jaccard_kernel
@@ -573,7 +574,7 @@ class JaccardRefinerCPU(GraphRefiner):
         )
 
     @overrides(GraphRefiner)
-    def compute_jaccard(self, idx) -> pd.DataFrame:
+    def compute_jaccard(self, idx) -> DataFrame:
         """Compute the Jaccard index on the CPU.
 
         Args:
@@ -617,7 +618,7 @@ class JaccardRefinerCPU(GraphRefiner):
 
     def add_isolated_nodes(
         self, n_cells: int, edgelist: pd.DataFrame
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """Add isolated nodes to the edgelist to ensure all nodes are included.
 
         Args:

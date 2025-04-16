@@ -3,6 +3,7 @@
 from typing import Literal
 
 import pandas as pd
+from pandas import DataFrame
 
 
 class ObsAggregator:
@@ -302,7 +303,7 @@ class ObsAggregator:
         )
 
     # More user-friendly functions
-    def get_row_counts(self) -> pd.DataFrame:
+    def get_row_counts(self) -> DataFrame:
         """
         Get the number of rows within each sample in `self.base_column`.
         """
@@ -310,7 +311,7 @@ class ObsAggregator:
 
     def get_category_counts(
         self, categorical_column: str | list[str]
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """
         Counts the number of cells of a given category or categories for
         each sample (`self.base_column`).
@@ -345,7 +346,7 @@ class ObsAggregator:
 
     def get_category_proportions(
         self, categorical_column: str | list[str], normalisation_column=None
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """
         Computes the proportion of cells of a given category or categories for
         each sample (`self.base_column`).
@@ -397,7 +398,7 @@ class ObsAggregator:
             "min", "max", "sum", "mean", "median", "first", "last"
         ],
         categorical_column: str | list[str] = None,
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """
         Summarises the values of a numerical column for each sample
         (`self.base_column`).
@@ -431,7 +432,7 @@ class ObsAggregator:
         categorical_column: str | list[str] = None,
         normalise: bool = False,
         normalisation_column: str = None,
-    ) -> pd.DataFrame:
+    ) -> DataFrame:
         """
         Counts the number of cells belonging to each bin of a numerical variable
         for each sample (`self.base_column`).

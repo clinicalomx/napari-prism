@@ -89,13 +89,13 @@ def kaplan_meier(
     return results
 
 
-def count_patients_per_time_step(
-    adata: AnnData,
-    time_column: str,
-    time_steps: list[float | int],
-    stratifier: str = None,
-) -> pd.DataFrame:
-    pass
+# def count_patients_per_time_step(
+#     adata: AnnData,
+#     time_column: str,
+#     time_steps: list[float | int],
+#     stratifier: str = None,
+# ) -> pd.DataFrame:
+#     pass
 
 
 def plot_kaplan_meier(
