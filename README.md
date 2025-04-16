@@ -30,25 +30,19 @@ The package was designed to be used completely within the [napari] application a
 
 Install [miniconda] or anaconda.
 
-Create a CPU-only environment:
+Open the conda terminal and create a simple environment:
 
-    ```bash
-    conda create -n prism python=3.10 jupyterlab -c conda-forge
-    ```
-
-Or, create a GPU-compatible environment (for example, with CUDA=12.5):
-
-    ```bash
-    conda create -n prism python=3.10 jupyterlab nvidia/label/cuda-12.5.0::cuda -c conda-forge
-    ```
+```bash
+conda create -n prism python=3.10 jupyterlab -c conda-forge
+```
 
 Activate the environment before executing the following installation instructions.
 
-    ```bash
-    conda activate prism
-    ```
+```bash
+conda activate prism
+```
 
-### List of CPU-Only Dependencies
+### List of Dependencies
 ```
 python==3.10
 spatialdata<=0.2.5.post0
