@@ -319,7 +319,7 @@ class ObsAggregator:
             categorical_column: .obs columns to to compute proportions for.
 
         Returns:
-            pd.DataFrame with the count data where each instance of
+            pandas DataFrame with the count data where each instance of
             `self.base_column` as indexing rows, and columns as the category or
             categories in `categorical_column`. If multiple categories were
             given, then the columns are MultiIndexed.
@@ -358,7 +358,7 @@ class ObsAggregator:
                 `normalisation_column` rather the total number of cells.
 
         Returns:
-            pd.DataFrame with the proportions data where each instance of
+            pandas DataFrame with the proportions data where each instance of
             `self.base_column` as indexing rows, and columns as the category or
             categories in `categorical_column`. If multiple categories were
             given, then the columns are MultiIndexed.
@@ -411,7 +411,7 @@ class ObsAggregator:
                 None.
 
         Returns:
-            pd.DataFrame with the summarised data where each instance of
+            pandas DataFrame with the summarised data where each instance of
             `self.base_column` as indexing rows, and column as the
             summarised numerical column, relabelled as
             "{aggregation_function}_{numerical_column}".
@@ -450,7 +450,7 @@ class ObsAggregator:
                 `normalisation_column`. normalise must be True for this to work.
 
         Returns:
-            pd.DataFrame with the count data where each instance of
+            pandas DataFrame with the count data where each instance of
             `self.base_column` as indexing rows, and columns as the bin
             categories. The bin categories are defined by the bin boundaries
             with the last bin being open-ended.
@@ -495,7 +495,7 @@ class ObsAggregator:
             numerical_column: .obs column to widen.
 
         Returns:
-            pd.DataFrame with the numerical data where each instance of
+            pandas DataFrame with the numerical data where each instance of
             `self.base_column` as indexing rows, and columns as every numerical
             observation for each sample. Columns denote the nth observation
             for each sample. Produces many NaNs.
@@ -569,30 +569,30 @@ class ObsAggregator:
         return df
 
 
-class ObsAggregatorAgent:
-    pass
+# class ObsAggregatorAgent:
+#     pass
 
 
-class ObsAnnotator:
-    """
-    Obs Annotator for labelling cell metadata with from various annotation
-    sources (dictionaries, spatial queries, etc).
-    """
+# class ObsAnnotator:
+#     """
+#     Obs Annotator for labelling cell metadata with from various annotation
+#     sources (dictionaries, spatial queries, etc).
+#     """
 
-    def spatial_annotation(self):
-        """https://spatialdata.scverse.org/en/stable/tutorials/notebooks/
-        notebooks/examples/napari_rois.html
-        """
+#     def spatial_annotation(self):
+#         """https://spatialdata.scverse.org/en/stable/tutorials/notebooks/
+#         notebooks/examples/napari_rois.html
+#         """
 
-    def annotate_column(self, column_name, mapping, condition, subset):
-        pass
+#     def annotate_column(self, column_name, mapping, condition, subset):
+#         pass
 
-    def append_column(self, column_name, mapping, condition, subset):
-        pass
+#     def append_column(self, column_name, mapping, condition, subset):
+#         pass
 
-    def remove_column(self, column_name):
-        pass
+#     def remove_column(self, column_name):
+#         pass
 
-    def annotate_column_by_rules(self, column_name, rules):
-        """Using a rules based dictionary, annotate column labels
-        based on the value(s) of two or more columns."""
+#     def annotate_column_by_rules(self, column_name, rules):
+#         """Using a rules based dictionary, annotate column labels
+#         based on the value(s) of two or more columns."""

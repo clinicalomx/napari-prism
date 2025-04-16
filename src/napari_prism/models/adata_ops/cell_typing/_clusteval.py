@@ -75,7 +75,7 @@ class ClusteringSearchEvaluator:
             k: K parameter value for the number of neighbors computed.
 
         Returns:
-            Subset pd.DataFrame containing columns of a given `k`.
+            Subset pandas DataFrame containing columns of a given `k`.
         """
         keys_with_k = [
             x for x in self.cluster_labels.columns if x.split("_")[0] == str(k)
@@ -96,7 +96,7 @@ class ClusteringSearchEvaluator:
             r: Graph clustering resolution value.
 
         Returns:
-            pd.Series containing the cluster labels.
+            pandas Series containing the cluster labels.
         """
         labels = self.get_K(k)[str(r)]
         labels.index = labels.index.astype(str)
@@ -109,7 +109,7 @@ class ClusteringSearchEvaluator:
         and `r`.
 
         Returns:
-            pd.DataFrame with multi-indexed columns, where the first level is
+            pandas DataFrame with multi-indexed columns, where the first level is
             `k` and the second level is `r`.
         """
         # Get the nicer dataframe version of obsm
@@ -137,7 +137,7 @@ class ClusteringSearchEvaluator:
                 function.
 
         Returns:
-            pd.DataFrame of pairwise scores between clustering runs.
+            pandas DataFrame of pairwise scores between clustering runs.
         """
         df = self.get_annotated_cluster_labels()
         p_len = df.shape[1]
@@ -210,7 +210,7 @@ def cluster_scores(
         k: Subset the pairwise scores to a given `k`.
 
     Returns:
-        pd.DataFrame of pairwise scores between clustering runs.
+        pandas DataFrame of pairwise scores between clustering runs.
     """
     # Look for the clustering searcher name in AnnData;
     # if not found, raise an error
