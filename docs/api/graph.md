@@ -20,5 +20,5 @@ spatial connectivity graphs.
 
    gr.proximity_density
    gr.cellular_neighborhoods_sq
-   gr.cellular_neighborhoods_enrichment
+   gr.cellular_neighborhood_enrichment
 ```
