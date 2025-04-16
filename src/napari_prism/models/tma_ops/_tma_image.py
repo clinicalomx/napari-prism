@@ -1855,10 +1855,10 @@ class TMASegmenter(MultiScaleImageOperations):
         gpu = core.use_gpu()
 
         # Check if macos + mps
-        # if torch.backends.mps.is_available():
-        #     gpu = True
-        #     device = torch.device("mps")
-        #     logger.info("Using MPS")
+        if torch.backends.mps.is_available():
+            gpu = True
+            device = torch.device("mps")
+            logger.info("Using MPS")
 
         # TODO: refine these checks
         if custom_model is None:

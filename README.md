@@ -54,6 +54,7 @@ dask<2024.12.1
 cellpose>=3.0.10
 scanpy>=1.10.0
 xarray<=2024.7.0
+spatialdata_plot<=0.2.7
 ```
 
 ## Installation: CPU only
