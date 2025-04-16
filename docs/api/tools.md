@@ -1,4 +1,4 @@
-## Tools: `tl`
+# Tools: `tl`
 
 ```{eval-rst}
 .. module:: napari_prism.tl
@@ -8,7 +8,7 @@
 .. currentmodule:: napari_prism
 ```
 
-### Functions
+## Functions
 
 Mainly wrappers for embedding functions from scanpy and rapids_singlecell. Contains a function to set backend between CPU (scanpy) and GPU (rapids_singlecell).
 

@@ -21,7 +21,7 @@ def add_obs_as_var(
     Args:
         adata: Anndata object.
         obs_columns: .obs columns to add as .var features.
-        layer (str, optional): Layer to add .obs features to. Defaults to None.
+        layer: Layer to add .obs features to. Defaults to None.
 
     Returns:
         New Anndata object with added .var features.

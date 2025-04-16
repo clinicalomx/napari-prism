@@ -1,4 +1,4 @@
-## Preprocessing: `pp`
+# Preprocessing: `pp`
 
 ```{eval-rst}
 .. module:: napari_prism.pp
@@ -10,7 +10,7 @@
 
 Filtering based on both marker intensity and cell-level observational values/quantiles. Common transforms used for marker intensity values. If backend is set to GPU (and configured), some functions wrap rapids_singlecell functions. Otherwise, same functions wrap scanpy.
 
-### Functions
+## Functions
 
 ```{eval-rst}
 .. autosummary::

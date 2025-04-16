@@ -21,7 +21,6 @@ def set_backend(backend: Literal["cpu", "gpu"]) -> None:
 
     Args:
         backend: Backend to use. Must be either "cpu" or "gpu".
-
     """
     global sc_backend
     if backend == "cpu":
@@ -116,8 +115,8 @@ def filter_by_obs_count(
         copy: Return a copy instead of writing inplace.
 
     Returns:
-        Filtered AnnData object. If `copy` is False, modifies the AnnData object
-        in place and returns None.
+        :class:`anndata.AnnData`: Filtered AnnData object. If `copy` is False,
+        modifies the AnnData object in place and returns None.
     """
     MIN_DEFAULT = 10
     MAX_DEFAULT = 1000000
@@ -172,8 +171,8 @@ def filter_by_obs_value(
         copy: Return a copy instead of writing inplace.
 
     Returns:
-        Filtered AnnData object. If `copy` is False, modifies the AnnData object
-        in place and returns None.
+        :class:`anndata.AnnData`: Filtered AnnData object. If `copy` is False,
+        modifies the AnnData object in place and returns None.
     """
 
     MIN_DEFAULT = 10
