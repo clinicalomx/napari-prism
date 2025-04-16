@@ -10,7 +10,6 @@
 [![tests](https://github.com/clinicalomx/napari-prism/workflows/tests/badge.svg)](https://github.com/clinicalomx/napari-prism/actions)
 [![codecov](https://codecov.io/gh/clinicalomx/napari-prism/branch/main/graph/badge.svg)](https://codecov.io/gh/clinicalomx/napari-prism)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-prism)](https://napari-hub.org/plugins/napari-prism)
-[![miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)](https://www.anaconda.com/docs/getting-started/miniconda/install)
 
 **NOTE: PRISM is still in heavy development.**
 PRISM or napari-prism is a package and [napari] plugin designed for interactively processing, analysing and visualising multiplxed tissue microarrays.
@@ -32,16 +31,17 @@ The package was designed to be used completely within the [napari] application a
 Install [miniconda] or anaconda.
 
 Create a CPU-only environment:
-    ```
+    ```bash
     conda create -n prism python=3.10 jupyterlab -c conda-forge
     ```
 
-Or, create a GPU-compatible environment (for example, CUDA=12.5):
-    ```
+Or, create a GPU-compatible environment (for example, with CUDA=12.5):
+    ```bash
     conda create -n prism python=3.10 jupyterlab nvidia/label/cuda-12.5.0::cuda -c conda-forge
     ```
+
 Activate the environment before executing the following installation instructions.
-    ```
+    ```bash
     conda activate prism
     ```
 
@@ -143,3 +143,4 @@ Adding shapes like `tma_envelopes` may cause segmentation faults (https://github
 [spatialdata-io]: https://github.com/scverse/spatialdata-io
 [sopa]: https://github.com/gustaveroussy/sopa
 [scverse]: https://scverse.org/
+[miniconda]: https://www.anaconda.com/docs/getting-started/miniconda/install
