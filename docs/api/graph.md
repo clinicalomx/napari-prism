@@ -1,4 +1,4 @@
-# Images: `im`
+# Graph: `gr`
 
 ```{eval-rst}
 .. module:: napari_prism.gr
