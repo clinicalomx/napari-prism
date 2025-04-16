@@ -103,6 +103,7 @@ intersphinx_mapping = {
     "geopandas": ("https://geopandas.org/en/stable/", None),
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
     "datatree": ("https://datatree.readthedocs.io/en/latest/", None),
+    "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
     "dask": ("https://docs.dask.org/en/latest/", None),
     "napari": ("https://napari.org/stable/", None),
     "spatialdata": (
