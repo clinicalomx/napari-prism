@@ -1,5 +1,3 @@
-""".pp module"""
-
 import importlib
 from collections.abc import Callable
 from functools import wraps
