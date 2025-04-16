@@ -17,5 +17,5 @@ Provides a convenience function to download and load a small test SpatialData da
    :nosignatures:
    :toctree: ../generated/
 
-   datasets.ncsclc4301_truncated
+   datasets.nsclc4301_truncated
 ```
