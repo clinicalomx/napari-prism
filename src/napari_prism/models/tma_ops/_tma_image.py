@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import shapely
 import skimage
+import torch
 import xarray as xr
 from anndata import AnnData
 from cellpose import core, denoise, models
@@ -1855,9 +1856,9 @@ class TMASegmenter(MultiScaleImageOperations):
         gpu = core.use_gpu()
 
         # Check if macos + mps
-        if torch.backends.mps.is_available():
+        if torch.backends.mps.is_available(): # noqa: F821
             gpu = True
-            device = torch.device("mps")
+            device = torch.device("mps") # noqa: F821
             logger.info("Using MPS")
 
         # TODO: refine these checks
