@@ -1812,12 +1812,10 @@ def cluster_embeddings(
         backend: The backend to use for clustering. Either 'CPU' or 'GPU'.
 
     Returns:
-        AnnData object with the following stored
-        - Clustering results stored as pd.DataFrames in
-            `adata.obsm[_labels]`, where the columns represent a single
-            clustering run.
-        - Graph clustering quality scores stored in
-            `adata.uns[_quality_scores]`.
+        AnnData object with the clustering results stored as pd.DataFrames in
+        `adata.obsm[_labels]`, where the columns represent a single clustering
+        run and graph clustering quality scores stored in
+        `adata.uns[_quality_scores]`.
     """
     # build clustering model
     if recipe == "phenograph":
