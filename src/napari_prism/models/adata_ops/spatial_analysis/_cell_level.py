@@ -175,15 +175,30 @@ def proximity_density(
     inplace: bool = True,
     n_jobs: int = 4,
 ) -> None | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """ "
-    Based off Scimap's p-score function.
-
+    """
     Computes the number of cells of a given pair of phenotypes being in
     proximity of one another, divided by the total number of cells.
+
+    Based off Scimap's p-score function.
 
     The definition of proximity depends on the adjacency matrix computed via
     squidpy.gr.spatial_neighbors.
 
+    Args:
+        adata: AnnData object.
+        grouping: Column name in adata.obs to group by.
+        phenotype: Column name in adata.obs to compute proximity for.
+        pairs: List of tuples of phenotype pairs to compute proximity for.
+            If None, computes proximity for all unique phenotype pairs.
+        connectivity_key: Key for the adjacency matrix in adata.obsp.
+        multi_index: If True, returns a multi-indexed DataFrame.
+        inplace: If True, stores the results in adata.uns.
+
+    Returns:
+        If inplace is False, returns a tuple of three DataFrames:
+            - Proximity density results.
+            - Masks for missing values.
+            - Cell counts for each pair of phenotypes.
     """
     # Drop na phenotype rows
     adata = adata[~adata.obs[phenotype].isna()]
@@ -278,8 +293,6 @@ def proximity_density(
 
 
 # Neighborhoods
-
-
 def _get_neighborhoods_from_job(
     job,
     region_groupby,

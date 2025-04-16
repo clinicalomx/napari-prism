@@ -8,7 +8,8 @@ from anndata import AnnData
 
 
 class ClusteringSearchEvaluator:
-    """Assess 'quality' of clusteriung results from a clustering search."""
+    """
+    Assess 'quality' of clusteriung results from a clustering search."""
 
     IMPLEMENTED_SEARCHERS = [
         "ScanpyClusteringSearch",
@@ -24,6 +25,8 @@ class ClusteringSearchEvaluator:
         gpu: bool = False,
     ) -> None:
         """
+        Initialize the ClusteringSearchEvaluator.
+
         Args:
             adata (AnnData): Anndata object containing results from the
                 clustering search.
@@ -47,7 +50,8 @@ class ClusteringSearchEvaluator:
             self._set_ml_backend("sklearn")
 
     def _set_ml_backend(self, backend: Literal["sklearn", "cuml"]) -> None:
-        """Set the backend for computing machine learning metrics.
+        """
+        Set the backend for computing machine learning metrics.
 
         Args:
             backend (str): Backend to use for computing machine learning
@@ -64,7 +68,8 @@ class ClusteringSearchEvaluator:
         self.ml = metrics
 
     def get_K(self, k: int) -> pd.DataFrame:
-        """Gets the clustering search run subset to a given `k`.
+        """
+        Gets the clustering search run subset to a given `k`.
 
         Args:
             k: K parameter value for the number of neighbors computed.
@@ -82,7 +87,8 @@ class ClusteringSearchEvaluator:
         return cluster_df
 
     def get_K_R(self, k, r) -> pd.Series:
-        """Returns the cluster labels from a given clustering run with a given
+        """
+        Returns the cluster labels from a given clustering run with a given
         `k` and `r`.
 
         Args:
@@ -98,7 +104,8 @@ class ClusteringSearchEvaluator:
         return labels
 
     def get_annotated_cluster_labels(self) -> pd.DataFrame:
-        """Return the cluster label matrix with multi-indexed columns for `k`
+        """
+        Return the cluster label matrix with multi-indexed columns for `k`
         and `r`.
 
         Returns:
@@ -117,7 +124,8 @@ class ClusteringSearchEvaluator:
     def between_model_score(
         self, score_function: callable, k: int | None = None, **kwargs
     ) -> pd.DataFrame:
-        """Return a pairwise array of quality scores between every other
+        """
+        Return a pairwise array of quality scores between every other
         clustering run.
 
         Args:
@@ -189,7 +197,8 @@ def cluster_scores(
     k: int | None = None,
     inplace: bool = False,
 ):
-    """Assess the quality of clustering results by computing a pairwise
+    """
+    Assess the quality of clustering results by computing a pairwise
     clustering score between every other clustering run. Higher values usually
     indicate concordant clustering results.
 

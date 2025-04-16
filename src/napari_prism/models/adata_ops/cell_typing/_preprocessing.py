@@ -16,7 +16,15 @@ sc_backend = importlib.import_module(_current_backend["module"])
 
 
 def set_backend(backend: Literal["cpu", "gpu"]) -> None:
-    """Set the backend to use for processing."""
+    """
+    Set the backend to use for processing. If GPU is selected, it will use
+    `rapids_singlecell`. If CPU is selected, it will use `scanpy`. This function
+    should be called before any other functions in this module are called.
+
+    Args:
+        backend: Backend to use. Must be either "cpu" or "gpu".
+
+    """
     global sc_backend
     if backend == "cpu":
         _current_backend["module"] = "scanpy"
@@ -36,7 +44,8 @@ def set_backend(backend: Literal["cpu", "gpu"]) -> None:
 
 
 def with_current_backend(function: Callable) -> Callable:
-    """Decorator to dynamically use current backend for scanpy-type functions.
+    """
+    Decorator to dynamically use current backend for scanpy-type functions.
     Also trims keyword arguments to only those accepted by the function.
 
     If GPU backend is set, then function handles moving data to GPU memory.
@@ -72,7 +81,8 @@ def with_current_backend(function: Callable) -> Callable:
 
 
 def trim_kwargs(function_kwargs: dict, function: Callable) -> dict:
-    """Trim function_kwargs to only those accepted by function.
+    """
+    Trim function_kwargs to only those accepted by function.
 
     Args:
         function_kwargs: Keyword arguments to trim.
@@ -95,7 +105,8 @@ def filter_by_obs_count(
     max_value: float | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Filters cells which belong to a category in `AnnData.obs` with a cell
+    """
+    Filters cells which belong to a category in `AnnData.obs` with a cell
     count less than a `min_value` and/or more than a `max_value`. If layer is
     None, does this on .X.
 
@@ -151,7 +162,8 @@ def filter_by_obs_value(
     max_value: float | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Filters cells which have a value of a given `AnnData.obs` column less
+    """
+    Filters cells which have a value of a given `AnnData.obs` column less
     than a `min_value` and/or more than a `max_value`.
 
     Args:
@@ -203,7 +215,8 @@ def filter_by_obs_quantile(
     max_quantile: float | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Filters cells which have a value of a given `AnnData.obs` column less
+    """
+    Filters cells which have a value of a given `AnnData.obs` column less
     than the `min_quantile` and/or more than the `max_quantile`.
 
     Args:
@@ -263,7 +276,8 @@ def filter_by_var_value(
     layer: str | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Filters cells which have a value of a given `AnnData.var` column less
+    """
+    Filters cells which have a value of a given `AnnData.var` column less
     than a `min_value` and/or more than a `max_value`.
 
     Args:
@@ -317,7 +331,8 @@ def filter_by_var_quantile(
     layer: str | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Filters cells which have a value of a given `AnnData.var` column less
+    """
+    Filters cells which have a value of a given `AnnData.var` column less
     than the `min_quantile` and/or more than the `max_quantile`.
 
     Args:
@@ -371,7 +386,8 @@ def fill_na(
     layer: str | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Fill NaNs in a given layer or .X with a given value.
+    """
+    Fill NaNs in a given layer or .X with a given value.
 
     Args:
         adata: Anndata object.
@@ -397,7 +413,8 @@ def fill_na(
 
 @with_current_backend
 def log1p(adata: AnnData, copy: bool = True, **kwargs) -> AnnData | None:
-    """Apply log1p transformation (natural log transform with pseudocount) to a
+    """
+    Apply log1p transformation (natural log transform with pseudocount) to a
     given layer or .X. Wraps `sc.pp.log1p` or `rsc.pp.log1p`.
 
     Args:
@@ -418,7 +435,8 @@ def arcsinh(
     layer: str | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Apply arcsinh transformation with a given cofactor to a given layer or
+    """
+    Apply arcsinh transformation with a given cofactor to a given layer or
     .X.
 
     Args:
@@ -449,7 +467,8 @@ def zscore(
     layer: str | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Apply z-score transformation along the rows of a given layer or .X. Each
+    """
+    Apply z-score transformation along the rows of a given layer or .X. Each
     cell's expression across vars will be scored -1 to 1.
 
     i.e. A relative 'rank' of vars within each cell.
@@ -480,7 +499,8 @@ def zscore(
 def scale(
     adata: AnnData, layer: str | None = None, copy: bool = True, **kwargs
 ) -> AnnData | None:
-    """Scale columns and rows to have 0 mean and unit variance in a given layer
+    """
+    Scale columns and rows to have 0 mean and unit variance in a given layer
     or .X. Wraps `scanpy.pp.scale` or `rsc.pp.scale`.
 
     Args:
@@ -503,7 +523,8 @@ def percentile(
     layer: str | None = None,
     copy: bool = True,
 ) -> AnnData | None:
-    """Normalise data to the 95th or 99th percentile. Axis = 0, or per column.
+    """
+    Normalise data to the 95th or 99th percentile. Axis = 0, or per column.
     Wraps `np.percentile`.
 
     Args:
@@ -552,7 +573,8 @@ def neighbors(
     copy: bool = True,
     **kwargs,
 ) -> AnnData | None:
-    """Compute a neighborhood graph in a given expression or embedding space.
+    """
+    Compute a neighborhood graph in a given expression or embedding space.
     Wrapper for `scanpy.pp.neighbors` or `rsc.pp.neighbors`.
 
     Args:

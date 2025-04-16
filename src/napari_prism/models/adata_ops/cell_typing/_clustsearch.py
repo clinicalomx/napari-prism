@@ -1789,7 +1789,8 @@ def cluster_embeddings(
     log_time: bool = True,
     backend: Literal["CPU", "GPU"] = "CPU",
 ) -> AnnData:
-    """Perform Phenograph or Scanpy clustering on an .obsm embedding within an
+    """
+    Perform Phenograph or Scanpy clustering on an .obsm embedding within an
     AnnData object.
 
     Args:

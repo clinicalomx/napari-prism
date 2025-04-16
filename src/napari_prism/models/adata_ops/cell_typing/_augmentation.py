@@ -15,7 +15,8 @@ from anndata import AnnData
 def add_obs_as_var(
     adata: AnnData, obs_columns: list[str], layer: str | None = None
 ) -> AnnData:
-    """Adds .obs features as .var features to an AnnData.
+    """
+    Adds .obs features as .var features to an AnnData.
 
     Args:
         adata: Anndata object.
@@ -56,7 +57,8 @@ def add_obs_as_var(
 
 
 def subset_adata_by_var(adata: AnnData, var_subset: list[str]) -> AnnData:
-    """Subsets an AnnData object by var names.
+    """
+    Subsets an AnnData object by var names.
 
     Args:
         adata: Anndata object.
@@ -73,7 +75,8 @@ def subset_adata_by_var(adata: AnnData, var_subset: list[str]) -> AnnData:
 def subset_adata_by_obs_category(
     adata: AnnData, obs_key: str, obs_subset: list[str]
 ) -> AnnData:
-    """Subsets an AnnData object by obs category or categories.
+    """
+    Subsets an AnnData object by obs category or categories.
 
     Args:
         adata: Anndata object.

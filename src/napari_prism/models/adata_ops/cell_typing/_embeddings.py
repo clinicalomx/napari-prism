@@ -13,7 +13,16 @@ sc_backend = importlib.import_module(_current_backend["module"])
 
 
 def set_backend(backend: Literal["cpu", "gpu"]) -> None:
-    """Set the backend to use for processing."""
+    """
+    Set the backend to use for processing. If GPU is selected, it will use
+    `rapids_singlecell`. If CPU is selected, it will use `scanpy`.
+    This function should be called before any other functions in this module
+    are called.
+
+    Args:
+        backend: Backend to use. Must be either "cpu" or "gpu".
+
+    """
     global sc_backend
     if backend == "cpu":
         _current_backend["module"] = "scanpy"
@@ -66,7 +75,8 @@ def with_current_backend(function: Callable) -> Callable:
 
 
 def trim_kwargs(function_kwargs: dict, function: Callable) -> dict:
-    """Trim function_kwargs to only those accepted by function.
+    """
+    Trim function_kwargs to only those accepted by function.
 
     Args:
         function_kwargs: Keyword arguments to trim.
@@ -84,7 +94,8 @@ def trim_kwargs(function_kwargs: dict, function: Callable) -> dict:
 
 @with_current_backend
 def pca(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
-    """Perform principal components analysis. Wraps `sc.pp/tl.pca` or
+    """
+    Perform principal components analysis. Wraps `sc.pp/tl.pca` or
     `rsc.pl/tl.pca`.
 
     Args:
@@ -101,7 +112,8 @@ def pca(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
 
 @with_current_backend
 def umap(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
-    """Perform UMAP. Wraps `sc.pl/tl.umap` or `rsc.tl.umap`.
+    """
+    Perform UMAP. Wraps `sc.pl/tl.umap` or `rsc.tl.umap`.
 
     Args:
         adata: Anndata object.
@@ -117,7 +129,8 @@ def umap(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
 
 @with_current_backend
 def tsne(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
-    """Perform t-SNE. Wraps `sc.pl/tl.tsne` or `rsc.tl.tsne`.
+    """
+    Perform t-SNE. Wraps `sc.pl/tl.tsne` or `rsc.tl.tsne`.
 
     Args:
         adata: Anndata object.
@@ -133,7 +146,8 @@ def tsne(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
 
 @with_current_backend
 def harmony(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
-    """Performs HarmonyPy batch correction. Wraps
+    """
+    Performs HarmonyPy batch correction. Wraps
     `sc.external.pp.harmony_integrate` or `rsc.pp.harmony_integrate`.
 
     Args:
