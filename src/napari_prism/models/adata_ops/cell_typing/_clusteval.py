@@ -32,7 +32,7 @@ class ClusteringSearchEvaluator:
                 clustering search.
             searcher_name (str): Name of the clustering searcher. Options:
                 "ScanpyClusteringSearch", "HybridPhenographSearch".
-            gpu (bool, optional): If available, attempts to use GPU for
+            gpu (bool): If available, attempts to use GPU for
                 clustering. Defaults to False.
         """
         self.adata = adata
@@ -207,7 +207,7 @@ def cluster_scores(
         clustering_score: The clustering score to assess. Scores either
             adjusted rand index (ARI), normalized mutual information (NMI), or
             adjusted mutual information (AMI).
-        k (Optional): Subset the pairwise scores to a given `k`.
+        k: Subset the pairwise scores to a given `k`.
 
     Returns:
         pd.DataFrame of pairwise scores between clustering runs.

@@ -115,8 +115,8 @@ def filter_by_obs_count(
         copy: Return a copy instead of writing inplace.
 
     Returns:
-        :class:`anndata.AnnData`: Filtered AnnData object. If `copy` is False,
-        modifies the AnnData object in place and returns None.
+        Filtered AnnData object. If `copy` is False, modifies the AnnData object
+        in place and returns None.
     """
     MIN_DEFAULT = 10
     MAX_DEFAULT = 1000000
@@ -171,8 +171,8 @@ def filter_by_obs_value(
         copy: Return a copy instead of writing inplace.
 
     Returns:
-        :class:`anndata.AnnData`: Filtered AnnData object. If `copy` is False,
-        modifies the AnnData object in place and returns None.
+        Filtered AnnData object. If `copy` is False, modifies the AnnData object
+        in place and returns None.
     """
 
     MIN_DEFAULT = 10
@@ -527,7 +527,7 @@ def percentile(
     Args:
         adata: Anndata object.
         percentile: Percentile to normalise to. Defaults to 95.
-        layer (optional): Expression layer to apply percentile transformation.
+        layer: Expression layer to apply percentile transformation.
             If `None`, `X` is transformed.
         copy: Return a copy instead of writing inplace.
 

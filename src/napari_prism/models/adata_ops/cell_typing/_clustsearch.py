@@ -1813,11 +1813,11 @@ def cluster_embeddings(
 
     Returns:
         AnnData object with the following stored
-        1) Clustering results stored as pd.DataFrames in
-            `adata.obsm[*_labels]`, where the columns represent a single
+        - Clustering results stored as pd.DataFrames in
+            `adata.obsm[_labels]`, where the columns represent a single
             clustering run.
-        2) Graph clustering quality scores stored in
-            `adata.uns[*_quality_scores]`.
+        - Graph clustering quality scores stored in
+            `adata.uns[_quality_scores]`.
     """
     # build clustering model
     if recipe == "phenograph":
