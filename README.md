@@ -43,6 +43,7 @@ conda activate prism
 ```
 
 ### List of Dependencies
+
 ```
 python==3.10
 spatialdata<=0.2.5.post0
