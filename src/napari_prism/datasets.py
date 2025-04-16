@@ -18,6 +18,15 @@ TAR_NAME = f"{ZARR_NAME}.tar"
 
 
 def nsclc4301_truncated():
+    """
+    Downloads and extracts a truncated version of a multiplexed TMA from a
+    cohort of non-small cell lung cancer patients (NSCLC4301).
+
+    This truncated version only includes the two cores in the top-left corner of
+    the image with only 6 channels (DAPI, E-cadherin, Vimentin, Pan-Cytokeratin,
+    CD20, and CD3). The full dataset is available at
+    https://zenodo.org/record/15226841/files/nsclc4301.zarr.tar?download=1.
+    """
     cwd = Path.cwd()
     tar_path = cwd / TAR_NAME
     zarr_path = cwd / ZARR_NAME

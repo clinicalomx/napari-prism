@@ -23,8 +23,18 @@ def get_sample_level_adata(
 ) -> AnnData:
     """
     Return an AnnData object indexed by samples. If feature_columns is None,
-    then obs returns all columns which are parallel keys (1:1) or super keys
-    (N:1) to `sample_column`.
+    then obs returns all columns which are parallel keys (1to1) or super keys
+    (Nto1) to `sample_column`.
+
+    Args:
+        adata: AnnData object.
+        sample_column: Column name in .obs to use as the sample index.
+        feature_columns: List of column names in .obs to use as features.
+            If None, then all columns which are parallel keys (1to1) or super
+            keys (Nto1) to `sample_column` are used.
+
+    Returns:
+        AnnData object indexed by samples (i.e. a patient level AnnData).
     """
     agg = ObsAggregator(adata, sample_column)
     if feature_columns is None:

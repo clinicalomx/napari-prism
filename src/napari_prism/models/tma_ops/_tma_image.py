@@ -2495,8 +2495,39 @@ def mask_tma(
     reference_coordinate_system: str = "global",
     inplace: bool = True,
 ) -> SpatialData:
-    """Masks a channel or channels of the raw multiscale image stored in the
-    .image attribute of the provided SpatialData object.
+    """
+    Masks a channel or channels of the raw multiscale image stored in the .image
+    attribute of the provided SpatialData object.
+
+    Args:
+        spatialdata: The spatialdata object to mask.
+        image_name: The name of the image to mask.
+        channel: The channel or channels to mask.
+        scale: The scale to mask.
+        output_mask_name: The name of the output mask.
+        sigma_um: The sigma in microns for the Gaussian filter.
+        expansion_um: The expansion in microns for the mask.
+        li_threshold: If True, uses the Li thresholding method the image before
+            masking.
+        edge_filter: If True, applies an edge filter to the image before
+            masking.
+        adapt_hist: If True, applies adaptive histogram equalization to the
+            image before masking.
+        gamma_correct: If True, applies gamma correction to the image before
+            masking.
+        fill_holes: If True, fills holes in the mask.
+        remove_small_spots_size: The size in pixels to remove small spots from
+            the mask.
+        estimated_core_diameter_um: The estimated core diameter in microns.
+        core_fraction: The core fraction to use for masking.
+        rasterize: If True, rasterizes the mask.
+        reference_coordinate_system: The reference coordinate system to use.
+        inplace: If True, modifies the spatialdata object in place. If False,
+            returns the mask and transformation sequence.
+
+    Returns:
+        If inplace is True, returns the modified spatialdata object. If False,
+        returns a tuple of the masks, transformation sequence, and masks_gdf.
 
     """
     # Build model
@@ -2561,7 +2592,8 @@ def dearray_tma(
     SpatialData
     | tuple[GeoDataFrame, GeoDataFrame, AnnData, BaseTransformation]
 ):
-    """Automatically dearrays a TMA on masks stored in the .labels attribute of
+    """
+    Automatically dearrays a TMA on masks stored in the .labels attribute of
     the provided spatialdata object.
 
     Args:
@@ -2571,6 +2603,13 @@ def dearray_tma(
         expectation_margin: The margin of error for the expected diameter.
         expected_rows: The expected number of rows in the TMA.
         expected_cols: The expected number of columns in the TMA.
+        inplace: If True, modifies the spatialdata object in place. If False,
+            returns the dearrayed TMA cores and envelope.
+
+    Returns:
+        If inplace is True, returns the modified spatialdata object. If False,
+        returns a tuple of the dearrayed TMA cores, envelope, and
+        transformations.
     """
     # Build model
     model = TMADearrayer(sdata=spatialdata, image_name=label_name)
@@ -2646,6 +2685,41 @@ def segment_tma(
     scale="scale0",
     inplace: bool = True,
 ) -> SpatialData | DataArray | tuple[DataArray, BaseTransformation]:
+    """
+    Performs cell segmentation using Cellpose to the given image.
+
+    Args:
+        spatialdata: The spatialdata object to segment.
+        image_name: The name of the image to segment.
+        output_segmentation_label: The name of the output segmentation label.
+        segmentation_channel: The channel or channels to segment.
+        tiling_shapes: Shapes to explicitly tile by. Usually this will be the
+            shapes denoting TMA core regions.
+        model_type: The type of cellpose model to use.
+        nuclei_diam_um: The diameter of the nuclei in microns. If this is
+            negative, then the diameter is automatically estimated.
+        channel_merge_method: The method to merge multiple channels.
+            Options: "max", "mean", "sum", "median".
+        optional_nuclear_channel: The optional nuclear channel (if
+            supported).
+        tiling_shapes_annotation_column: The column in `tiling_shapes` to
+            annotate distinct regions by. This is added as a label to each cell.
+        normalize: If True, does image intensity normalization.
+        cellprob_threshold: The cell probability threshold.
+        flow_threshold: The flow threshold.
+        custom_model: The custom model to use, if supplied.
+        denoise_model: The denoiser model to use.
+        preview: If True, only returns the input image (i.e. everything up
+            to just before segmentation).
+        reference_coordinate_system: The reference coordinate system to use.
+        scale: The scale to segment.
+        inplace: If True, modifies the spatialdata object in place. If False,
+            returns the segmentation mask and transformation sequence.
+
+    Returns:
+        If inplace is True, returns the modified spatialdata object. If False,
+        returns a tuple of the segmentation mask and transformation sequence.
+    """
     # build model
     if isinstance(segmentation_channel, str):
         segmentation_channel = [segmentation_channel]
@@ -2720,6 +2794,28 @@ def measure_tma(
     inplace: bool = True,
     scale="scale0",
 ) -> SpatialData | tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Measures the properties of the labels or cells in the image from a given
+    labels mask. Writes the measurements as an AnnData table to the underlying
+    sdata object.
+
+    Args:
+        spatialdata: The spatialdata object to measure.
+        image_name: The name of the image to measure.
+        segmentation_name: The name of the segmentation mask.
+        output_table_name: The name of the output table.
+        tiling_shapes: The tiling shapes to use.
+        extended_properties: If True, includes extended properties.
+        intensity_mode: The intensity mode to use. Options: "mean", "median".
+        reference_coordinate_system: The reference coordinate system to use.
+        inplace: If True, modifies the spatialdata object in place. If False,
+            returns the measurements as a tuple of DataFrames.
+        scale: The scale to measure.
+
+    Returns:
+        If inplace is True, returns the modified spatialdata object. If False,
+        returns a tuple of DataFrames containing the measurements.
+    """
     model = TMAMeasurer(
         sdata=spatialdata,
         image_name=image_name,

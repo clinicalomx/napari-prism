@@ -255,20 +255,27 @@ def cellular_neighborhood_enrichment(
     grouping: str,
     pseudocount: float = 1e-3,
 ) -> dict:
-    """Perform a cellular neighborhood enrichment test using OLS linear models.
+    """
+    Perform a cellular neighborhood enrichment test using OLS linear models.
 
     Args:
-        adata (AnnData): Annotated data object.
-        neighborhood (str): Column in .obs that defines the neighborhood index
+        adata: Annotated data object.
+        neighborhood: Column in .obs that defines the neighborhood index
             or label that a cell belongs to.
-        phenotype (str): Column in .obs that defines the cellular label to take
+        phenotype: Column in .obs that defines the cellular label to take
             into account. Ideally this should be the phenotype that was used to
             compute the given `neighborhood`.
-        label (str): Column in .obs that defines the binary label defining
+        label: Column in .obs that defines the binary label defining
             distinct `grouping` groups.
-        grouping (str): Column in .obs that defines distinct samples.
-        pseudo_count (float, optional): Pseudocount to add to the log2
+        grouping: Column in .obs that defines distinct samples.
+        pseudo_count: Pseudocount to add to the log2
             normalised proportions data. Defaults to 1e-3.
+
+    Returns:
+        results: Dictionary containing the p-values, adjusted p-values,
+            coefficients, t-values and null hypothesis rejection status.
+            Each entry is a DataFrame with neighborhoods as rows and
+            phenotypes as columns.
     """
     unique_phenotypes = adata.obs[phenotype].unique()
     unique_neighborhoods = adata.obs[neighborhood].unique()

@@ -462,12 +462,43 @@ class PrismInteractive(Interactive):
         )
 
 
-def qptiff(path: str | Path, write_zarr: bool = False):
-    return QptiffReader(path).to_spatialdata()
+def qptiff(path: str | Path, save_path: str | Path | None = None):
+    """
+    Read .qptiff file into a SpatialData object and optionally save as a zarr
+    store.
+
+    Args:
+        path: Path to the .qptiff file.
+        save_path: Path to optionally save an on-disk representation as a
+            zarr store.
+
+    Returns:
+        sdata: The converted SpatialData object.
+
+    """
+    sdata = QptiffReader(path).to_spatialdata()
+    if save_path is not None:
+        sdata.write(save_path)
+    return sdata
 
 
-def ometiff(path: str | Path, write_zarr: bool = False):
-    return OmeTiffReader(path).to_spatialdata()
+def ometiff(path: str | Path, save_path: str | Path | None = None):
+    """
+    Read .ome.tiff file into a SpatialData object and optionally save as a
+    zarr store.
+
+    Args:
+        path: Path to the .ome.tiff file.
+        save_path: Path to optionally save an on-disk representation as a
+            zarr store.
+
+    Returns:
+        sdata: The converted SpatialData object.
+    """
+    sdata = OmeTiffReader(path).to_spatialdata()
+    if save_path is not None:
+        sdata.write(save_path)
+    return sdata
 
 
 def napari_spatialdata_with_prism_reader(path: str | Path):

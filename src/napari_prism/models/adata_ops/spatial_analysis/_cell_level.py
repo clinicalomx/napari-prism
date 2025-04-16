@@ -176,13 +176,18 @@ def proximity_density(
     n_jobs: int = 4,
 ) -> None | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Computes the number of cells of a given pair of phenotypes being in
-    proximity of one another, divided by the total number of cells.
+    Computes proximity density from scimap's p-score function compatible with
+    squidpy-generated .obsp spatial graphs. By default, stores the results
+    inplace.
 
-    Based off Scimap's p-score function.
+    Proximity density is defined as the number of cells of a given pair of
+    phenotypes being in proximity of one another, divided by the total number of
+    cells.
 
     The definition of proximity depends on the adjacency matrix computed via
-    squidpy.gr.spatial_neighbors.
+    squidpy.gr.spatial_neighbors. To stay true to the original definition of
+    proximity density, the adjacency matrix should be a radial graph of a given
+    radius in um.
 
     Args:
         adata: AnnData object.
@@ -195,10 +200,10 @@ def proximity_density(
         inplace: If True, stores the results in adata.uns.
 
     Returns:
-        If inplace is False, returns a tuple of three DataFrames:
-            - Proximity density results.
-            - Masks for missing values.
-            - Cell counts for each pair of phenotypes.
+        If inplace is False, returns a tuple of three dataframes, the
+        first containing the proximity density results, the second containing
+        the masks for missing values, and the third containing the cell counts
+        for each pair of phenotypes.
     """
     # Drop na phenotype rows
     adata = adata[~adata.obs[phenotype].isna()]
@@ -348,7 +353,21 @@ def cellular_neighborhoods_sq(
     k_kmeans: list[int] = None,
     mini_batch_kmeans: bool = True,
     parallelise: bool = False,
-):
+) -> None:
+    """
+    Compute Nolan's cellular neighborhoods compatible with squidpy-generated
+    .obsp spatial graphs. By default, stores the results inplace.
+
+    Args:
+        adata: AnnData object.
+        phenotype: Cell label to compute neighborhoods on.
+        connectivity_key: Key for the adjacency matrix in adata.obsp. Ideally,
+            should be a KNN graph to stay true to the original definition of
+            cellular neighborhoods.
+        k_kmeans: List of K values to use for KMeans clustering. If None,
+            defaults to [10].
+        mini_batch_kmeans: If True, uses MiniBatchKMeans instead of KMeans.
+    """
     if k_kmeans is None:
         k_kmeans = [10]
 

@@ -28,8 +28,26 @@ def image(
     figsize: tuple[int, int] | None = None,
     dpi: int | None = None,
     coordinate_system: str = "global",  # If generated with prism.
-    show=True,
+    show: bool = True,
 ) -> None | SpatialData:
+    """
+    Displays an Image element from the SpatialData object.
+
+    Args:
+        sdata: The SpatialData object containing the image.
+        image_name: The name of the image to display.
+        channel_label: The label of the channel to display.
+        channel_cmap: The colormap to use for the channel.
+        alpha: The alpha value for the image.
+        figsize: The size of the figure.
+        dpi: The DPI of the figure.
+        coordinate_system: The coordinate system to use for rendering.
+        show: Whether to show the plot or return it.
+
+    Returns:
+        None if show is True, otherwise returns the rendered SpatialData
+        object.
+    """
     out = sdata.pl.render_images(
         image_name, channel_label, cmap=channel_cmap, alpha=alpha
     )
@@ -53,6 +71,25 @@ def mask_tma(
     show: bool = True,
     **kwargs,
 ) -> None | SpatialData:
+    """
+    Displays a labels element from the SpatialData object, such as the generated
+    TMA masks.
+
+    Args:
+        sdata: The SpatialData object containing the image.
+        label_name: The name of the label to display.
+        image_name: The name of the image to display.
+        channel_label: The label of the channel to display.
+        channel_cmap: The colormap to use for the channel.
+        figsize: The size of the figure.
+        dpi: The DPI of the figure.
+        coordinate_system: The coordinate system to use for rendering.
+        show: Whether to show the plot or return it.
+        **kwargs: Passed to spatialdata.pl.render_labels.
+
+    Returns:
+        None if show is True, otherwise returns the rendered SpatialData object.
+    """
     IMALPHA = 1.0  # we have to define it here despite being the default above?
     if image_name is not None and channel_label is not None:
         out = image(
@@ -91,6 +128,32 @@ def dearray_tma(
     show: bool = True,
     **kwargs,
 ) -> None | SpatialData:
+    """
+    Displays a shapes element from the SpatialData object, such as the
+    generated TMA envelopes and cores.
+
+    Args:
+        sdata: The SpatialData object containing the image.
+        shapes_name: The name of the shapes to display.
+        image_name: The name of the image to display.
+        channel_label: The label of the channel to display.
+        channel_cmap: The colormap to use for the channel.
+        figsize: The size of the figure.
+        dpi: The DPI of the figure.
+        coordinate_system: The coordinate system to use for rendering.
+        fill_alpha: Alpha value for filling shapes.
+        outline_alpha: Alpha value for shape outlines.
+        outline_width: Width of shape outlines.
+        outline_color: Color of shape outlines.
+        tma_annotation_color: Color of TMA annotations.
+        tma_annotation_fontsize: Font size of TMA annotations.
+        show: Whether to show the plot or return it.
+        **kwargs: Passed to spatialdata.pl.render_shapes.
+
+    Returns:
+        None if show is True, otherwise returns the rendered SpatialData
+        object.
+    """
     IMALPHA = 1.0
     if image_name is not None and channel_label is not None:
         out = image(
@@ -160,6 +223,29 @@ def segment_tma(
     show: bool = True,
     **kwargs,
 ):
+    """
+    Displays a labels element from the SpatialData object, such as the
+    cell segmentation results.
+
+    Args:
+        sdata: The SpatialData object containing the image.
+        segmentation_name: The name of the segmentation to display.
+        image_name: The name of the image to display.
+        channel_label: The label of the channel to display.
+        channel_cmap: The colormap to use for the channel.
+        fill_alpha: Alpha value for filling shapes.
+        outline_alpha: Alpha value for shape outlines.
+        contour_px: Pixel width of contours.
+        figsize: The size of the figure.
+        dpi: The DPI of the figure.
+        coordinate_system: The coordinate system to use for rendering.
+        show: Whether to show the plot or return it.
+        **kwargs: Passed to spatialdata.pl.render_labels.
+
+    Returns:
+        None if show is True, otherwise returns the rendered SpatialData
+        object.
+    """
     IMALPHA = 1.0
     if image_name is not None and channel_label is not None:
         out = image(
@@ -270,7 +356,23 @@ def preview_tma_segmentation(
     optional_nuclear_channel: str | None = None,
     reference_coordinate_system: str = "global",
     auto_contrast: bool = True,
-):
+) -> None:
+    """
+    Displays a visual preview of the input data given to Cellpose for
+    segmentation. This is useful for checking if the provided markers provide a
+    good representation for nuclei, cell membranes, cytoplasms, etc.
+
+    Args:
+        sdata: The SpatialData object containing the image.
+        image_name: The name of the image to display.
+        segmentation_channel: The channel(s) to use for segmentation.
+        color_order: The order of colors for the RGB image.
+        channel_merge_method: Method to merge channels. Options are "max",
+            "mean", "min", or "sum".
+        optional_nuclear_channel: Optional nuclear channel for segmentation.
+        reference_coordinate_system: Coordinate system to use for rendering.
+        auto_contrast: Whether to apply auto contrast to the image.
+    """
     model = TMASegmenter(
         sdata=sdata,
         image_name=image_name,
@@ -308,7 +410,16 @@ def cluster_scores(
     input_data: AnnData | pd.DataFrame,
     clustering_score: Literal["ARI", "NMI", "AMI"] = "ARI",
     **kwargs,
-):
+) -> None:
+    """
+    Plot the cluster stability scores from a clustering run.
+
+    Args:
+        input_data: AnnData object or DataFrame containing clustering scores.
+        clustering_score: The clustering score to plot. Options are "ARI",
+            "NMI", or "AMI".
+        **kwargs: Additional keyword arguments for the heatmap.
+    """
     if isinstance(input_data, AnnData):
         # Look for the cluster scores in AnnData.uns keys;
         matches = [
