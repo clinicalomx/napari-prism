@@ -272,7 +272,7 @@ def cellular_neighborhood_enrichment(
             normalised proportions data. Defaults to 1e-3.
 
     Returns:
-        results: Dictionary containing the p-values, adjusted p-values,
+        Dictionary containing the p-values, adjusted p-values,
             coefficients, t-values and null hypothesis rejection status.
             Each entry is a DataFrame with neighborhoods as rows and
             phenotypes as columns.

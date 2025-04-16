@@ -473,7 +473,7 @@ def qptiff(path: str | Path, save_path: str | Path | None = None):
             zarr store.
 
     Returns:
-        sdata: The converted SpatialData object.
+        The converted SpatialData object.
 
     """
     sdata = QptiffReader(path).to_spatialdata()
@@ -493,7 +493,7 @@ def ometiff(path: str | Path, save_path: str | Path | None = None):
             zarr store.
 
     Returns:
-        sdata: The converted SpatialData object.
+        The converted SpatialData object.
     """
     sdata = OmeTiffReader(path).to_spatialdata()
     if save_path is not None:
