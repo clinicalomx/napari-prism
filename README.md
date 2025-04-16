@@ -33,10 +33,10 @@ Install [miniconda] or anaconda.
 Open the conda terminal and create a simple environment:
 
 ```bash
-conda create -n prism python=3.10 jupyterlab -c conda-forge
+conda create -n prism python=3.10 -c conda-forge
 ```
 
-Activate the environment before executing the following installation instructions.
+Activate the environment before executing the instructions in the Installation section.
 
 ```bash
 conda activate prism
