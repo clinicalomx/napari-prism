@@ -1,4 +1,4 @@
-# Plotting: `io`
+# Input/Output: `io`
 
 ```{eval-rst}
 .. module:: napari_prism.io
