@@ -4,7 +4,7 @@ from typing import Literal
 
 import pandas as pd
 from pandas import DataFrame
-
+from anndata import AnnData
 
 class ObsAggregator:
     AGGREGATION_ERROR = (
@@ -569,7 +569,76 @@ class ObsAggregator:
 
         return df
 
+def generate_sample_level_adata(
+    adata: AnnData,
+    sample_column: str,
+    feature_column: str,
+):
+    """
+    Generate a sample-level AnnData object from a cell-level AnnData object,
+    which makes it compatible for packages like ehrapy (once instantiating
+    .obsm layers as .X and .var).
 
+    This function exposes the core functionality of the ObsAggregator class.
+    Currently, this will either 1) return the parallel labels for each sample
+    in `sample_column`, or 2) return some aggregation measure of the labels for
+    each sample. For example, if `sample_column` represents individual patients,
+    and `feature_column` represents the patient's sex, then this returns a
+    dataframe with patients as rows, and the patient's sex as a single column
+    and then parses it into an AnnData object. If the `feature_column` has
+    multiple values per sample, then it will return the proportion of each
+    value per sample, such as the cell type proportion (each cell type is
+    a column) per patient (each patient as rows).
+
+    Args:
+        adata: AnnData object with cell-level metadata.
+        sample_column: Column in `adata.obs` which represents the sample
+            (e.g. patient, core, etc).
+        feature_column: Column in `adata.obs` which represents the feature to
+            aggregate or denote (e.g. cell type proportions or sex).
+
+    Returns:
+        AnnData: AnnData object with sample-level features, where each row is a
+        sample (e.g. patient, core, etc). Features are stored in obsm, with the
+        key being the `feature_column` and any aggregation applied to it.
+        Observables that can be used to regress features against .obsm keys
+        are automatically stored in .obs.
+    """
+    sample_agg = ObsAggregator(adata, sample_column)
+    aggregations = False
+
+    if feature_column in sample_agg.parallel_keys:
+        # If the feature_column is a parallel key, then we can just return the
+        # first value for each sample.
+        metadata_df = sample_agg.get_metadata_df(feature_column)
+    elif feature_column in sample_agg.super_keys:
+        if feature_column not in sample_agg.categorical_keys:
+            raise ValueError(
+                f"Feature column {feature_column} is not a categorical key"
+            )
+
+        aggregations = True
+        metadata_df = sample_agg.get_category_proportions(feature_column)
+    else:
+        raise ValueError(
+            f"Feature column {feature_column} is not a valid key"
+        )
+
+    parallel_dfs = []
+    for p in sample_agg.parallel_keys:
+        parallel_dfs.append(sample_agg.get_metadata_df(p))
+    parallel_df = pd.concat(parallel_dfs, axis=1)
+
+    if aggregations:
+        feature_column_obsm_label = f"{feature_column}_proportion"
+    else:
+        feature_column_obsm_label = feature_column
+
+    return AnnData(
+        obs=parallel_df,
+        obsm={feature_column_obsm_label: metadata_df},
+        uns={"obs_aggregator_attrs": {"sample_column": sample_column}},
+    )
 # class ObsAggregatorAgent:
 #     pass
 

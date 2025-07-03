@@ -254,6 +254,8 @@ def cellular_neighborhood_enrichment(
     label: str,
     grouping: str,
     pseudocount: float = 1e-3,
+    multiple_testing_correction: Literal[
+        "bonferroni", "fdr_bh", "hommel", "holm"] = "bonferroni"
 ) -> dict:
     """
     Perform a cellular neighborhood enrichment test using OLS linear models.
@@ -331,7 +333,7 @@ def cellular_neighborhood_enrichment(
     t_values_df = _consolidate_statistics(t_values, neighborhood, phenotype)
 
     null_hypothesis, adjusted_pvalues, _, _ = sm.stats.multipletests(
-        p_values_df.values.flatten(), method="bonferroni"
+        p_values_df.values.flatten(), method=multiple_testing_correction
     )
 
     null_hypothesis_df = pd.DataFrame(
