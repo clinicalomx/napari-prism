@@ -3,8 +3,9 @@
 from typing import Literal
 
 import pandas as pd
-from pandas import DataFrame
 from anndata import AnnData
+from pandas import DataFrame
+
 
 class ObsAggregator:
     AGGREGATION_ERROR = (
@@ -569,6 +570,7 @@ class ObsAggregator:
 
         return df
 
+
 def generate_sample_level_adata(
     adata: AnnData,
     sample_column: str,
@@ -620,9 +622,7 @@ def generate_sample_level_adata(
         aggregations = True
         metadata_df = sample_agg.get_category_proportions(feature_column)
     else:
-        raise ValueError(
-            f"Feature column {feature_column} is not a valid key"
-        )
+        raise ValueError(f"Feature column {feature_column} is not a valid key")
 
     parallel_dfs = []
     for p in sample_agg.parallel_keys:
@@ -639,6 +639,8 @@ def generate_sample_level_adata(
         obsm={feature_column_obsm_label: metadata_df},
         uns={"obs_aggregator_attrs": {"sample_column": sample_column}},
     )
+
+
 # class ObsAggregatorAgent:
 #     pass
 
