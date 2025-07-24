@@ -66,7 +66,6 @@ def _sort_by_size_np(clusters: np.ndarray, min_size: int) -> np.ndarray:
 
 
 def _sort_by_size_cp(
-    self,
     clusters: "cupy.ndarray",  # type: ignore # noqa: F821
     min_size: int,
 ) -> "cupy.ndarray":  # type: ignore # noqa: F821
@@ -84,10 +83,12 @@ def _sort_by_size_cp(
         Array of cluster labels re-labeled by size.
 
     """
-    relabeled = self.cupy.zeros(clusters.shape, dtype=int)
-    _, counts = self.cupy.unique(clusters, return_counts=True)
+    import cupy as cp
+
+    relabeled = cp.zeros(clusters.shape, dtype=int)
+    _, counts = cp.unique(clusters, return_counts=True)
     # sizes = cp.array([cp.sum(clusters == x) for x in cp.unique(clusters)])
-    o = self.cupy.argsort(counts)[::-1]
+    o = cp.argsort(counts)[::-1]
     for i, c in enumerate(o):
         if counts[c] > min_size:
             relabeled[clusters == c] = i
