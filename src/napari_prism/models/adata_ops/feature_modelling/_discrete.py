@@ -255,7 +255,8 @@ def cellular_neighborhood_enrichment(
     grouping: str,
     pseudocount: float = 1e-3,
     multiple_testing_correction: Literal[
-        "bonferroni", "fdr_bh", "hommel", "holm"] = "bonferroni"
+        "bonferroni", "fdr_bh", "hommel", "holm"
+    ] = "bonferroni",
 ) -> dict:
     """
     Perform a cellular neighborhood enrichment test using OLS linear models.

@@ -5,12 +5,9 @@ from pathlib import Path
 import dask.array as da
 import pandas as pd
 import tifffile
-
-# from napari_spatialdata import Interactive
 import zarr
 from dask.delayed import delayed as dd
 from loguru import logger
-from napari_spatialdata import Interactive
 from ome_types import from_xml
 from spatialdata import SpatialData
 from spatialdata.models import Image2DModel
@@ -446,20 +443,28 @@ class OmeTiffReader:
         return sdata
 
 
-class PrismInteractive(Interactive):
-    """Extends napari-spatialdata entry point, adds the plugin widgets on-top."""
+def prism_interactive(*args, **kwargs):
+    """Extends napari-spatialdata entry point, adds the plugin widgets on-top.
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._viewer.window.add_plugin_dock_widget(
-            "napari-spatialdata", "Scatter", tabify=True
-        )
-        self._viewer.window.add_plugin_dock_widget(
-            "napari-prism", "TMA Image Analysis", tabify=True
-        )
-        self._viewer.window.add_plugin_dock_widget(
-            "napari-prism", "AnnData Analysis", tabify=True
-        )
+    Modified to a factory function to prevent API-only / headless environments
+    from importing this (i.e. where Qt bindings may not be available).
+    """
+    from napari_spatialdata import Interactive
+
+    class PrismInteractive(Interactive):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._viewer.window.add_plugin_dock_widget(
+                "napari-spatialdata", "Scatter", tabify=True
+            )
+            self._viewer.window.add_plugin_dock_widget(
+                "napari-prism", "TMA Image Analysis", tabify=True
+            )
+            self._viewer.window.add_plugin_dock_widget(
+                "napari-prism", "AnnData Analysis", tabify=True
+            )
+
+    return PrismInteractive(*args, **kwargs)
 
 
 def qptiff(path: str | Path, save_path: str | Path | None = None):
@@ -508,7 +513,7 @@ def napari_spatialdata_with_prism_reader(path: str | Path):
     # Launch TMA plugin along side..
     # TODO: interative like component
     sdata = SpatialData.read(path)
-    _ = PrismInteractive(sdata, headless=True)
+    _ = prism_interactive(sdata, headless=True)
     return [(None,)]
 
 
