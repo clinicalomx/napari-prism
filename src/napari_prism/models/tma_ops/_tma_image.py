@@ -7,6 +7,7 @@ from threading import Lock
 from typing import Any, Literal
 
 import anndata as ad
+import cellpose.version
 import geopandas
 import geopandas as gpd
 import numpy as np
@@ -22,6 +23,7 @@ from datatree.datatree import DataTree
 from geopandas import GeoDataFrame
 from loguru import logger
 from numpy import dtype, float64, ndarray
+from packaging import version
 from scipy.ndimage import binary_fill_holes, generate_binary_structure
 from shapely import Point, Polygon, geometry
 from skimage import feature, morphology, transform
@@ -1825,6 +1827,8 @@ class TMASegmenter(MultiScaleImageOperations):
     ):
         """Wrapper for building and running cellpose models.
 
+        Update: Dynamically checking if Cellpose3, or newer SAM implementation.
+
         Args:
             image: The image to segment.
             model_type: The type of cellpose model to use.
@@ -1863,7 +1867,10 @@ class TMASegmenter(MultiScaleImageOperations):
 
         # TODO: refine these checks
         if custom_model is None:
-            custom_model = False
+            if version.parse(cellpose.version) >= version.parse("4"):
+                custom_model = "cpsam"
+            else:
+                custom_model = False
 
         if denoise_model == "nan":
             denoise_model = None
@@ -1872,7 +1879,10 @@ class TMASegmenter(MultiScaleImageOperations):
             denoise_model = False
 
         if custom_model is None:
-            model_type = None
+            if version.parse(cellpose.version) >= version.parse("4"):
+                custom_model = "cpsam"
+            else:
+                model_type = None
 
         if denoise_model:
             model = denoise.CellposeDenoiseModel(
