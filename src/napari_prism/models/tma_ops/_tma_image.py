@@ -1871,6 +1871,7 @@ class TMASegmenter(MultiScaleImageOperations):
 
         is_cpsam = version.parse(cellpose.version) >= version.parse("4")
         if custom_model is False and is_cpsam:
+            print("Using CellposeSAM")
             custom_model = "cpsam"
 
         if denoise_model == "nan":
@@ -2689,6 +2690,7 @@ def segment_tma(
     reference_coordinate_system: str = "global",
     scale="scale0",
     inplace: bool = True,
+    **kwargs
 ) -> SpatialData | DataArray | tuple[DataArray, BaseTransformation]:
     """
     Performs cell segmentation using Cellpose to the given image.
@@ -2775,6 +2777,7 @@ def segment_tma(
         custom_model=custom_model,
         denoise_model=denoise_model,
         preview=preview,
+        **kwargs
     )
     segmentation_mask, transformations = output
 
