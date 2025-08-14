@@ -1867,22 +1867,17 @@ class TMASegmenter(MultiScaleImageOperations):
 
         # TODO: refine these checks
         if custom_model is None:
-            if version.parse(cellpose.version) >= version.parse("4"):
-                custom_model = "cpsam"
-            else:
-                custom_model = False
+            custom_model = False
+
+        is_cpsam = version.parse(cellpose.version) >= version.parse("4")
+        if custom_model is False and is_cpsam:
+            custom_model = "cpsam"
 
         if denoise_model == "nan":
             denoise_model = None
 
         if denoise_model is None:
             denoise_model = False
-
-        if custom_model is None:
-            if version.parse(cellpose.version) >= version.parse("4"):
-                custom_model = "cpsam"
-            else:
-                model_type = None
 
         if denoise_model:
             model = denoise.CellposeDenoiseModel(
