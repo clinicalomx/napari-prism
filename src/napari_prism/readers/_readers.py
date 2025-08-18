@@ -8,13 +8,13 @@ import tifffile
 import zarr
 from dask.delayed import delayed as dd
 from loguru import logger
+from pyometiff import OMETIFFReader
 from spatialdata import SpatialData
 from spatialdata.models import Image2DModel
 from spatialdata.transformations import Identity, Scale
 
 from napari_prism.constants import DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 
-from pyometiff import OMETIFFReader
 
 class QptiffReader:
     def __init__(self, qptiff_path, image_index=0, *args, **kwargs):
@@ -235,32 +235,30 @@ class QptiffReader:
 
         return sdata
 
+
 class OmeTiffReader:
     def __init__(self, ome_tiff_path, image_index=0):
         self.ome_tiff_path = ome_tiff_path
         self.image_index = image_index
         self.load(ome_tiff_path)
         self.image_name = self.reformat_image_name(ome_tiff_path)
-        
+
         self.marker_info = None
         self.markers = None
         self.mpp_x = None
         self.mpp_y = None
         self.axes = None
-        self.parse_metadata() # will set the vars above
+        self.parse_metadata()  # will set the vars above
 
-    def load(
-        self, ome_tiff_path
-    ):
+    def load(self, ome_tiff_path):
         _reader = OMETIFFReader(
-            fpath=ome_tiff_path,
-            imageseries=self.image_index
+            fpath=ome_tiff_path, imageseries=self.image_index
         )
         array, metadata, xml = _reader.read()
         self.image = array
         self.metadata = metadata
         self.xml = xml
-    
+
     def parse_metadata(self):
         mt = self.metadata
         scale_x = mt["PhysicalSizeX"]
@@ -292,14 +290,12 @@ class OmeTiffReader:
         # TZCYX; for spatialdata omit TZ;
         axes = axes.lstrip("TZ")
         axes = axes.lower()
-        axes = list(axes) # image2d model parser takes list of ax
+        axes = list(axes)  # image2d model parser takes list of ax
         self.axes = axes
 
     # Legacy func
     def set_mpp(self, data_df, mpp_x, mpp_y):
-        if (data_df[mpp_x].nunique() > 1) or (
-            data_df[mpp_y].nunique() > 1
-        ):
+        if (data_df[mpp_x].nunique() > 1) or (data_df[mpp_y].nunique() > 1):
             raise NotImplementedError(
                 "Unhandled physical unit calibration for different scaling"
                 "factors across channel axis."
@@ -330,7 +326,9 @@ class OmeTiffReader:
             downscale_factors = DEFAULT_MULTISCALE_DOWNSCALE_FACTORS
 
         if not multiscale:
-            downscale_factors = None  # if not multiscale, no downscaling is needed
+            downscale_factors = (
+                None  # if not multiscale, no downscaling is needed
+            )
 
         self.downscale_factors = downscale_factors  # used to match multiscaling of main image for fullscale images produced
 
@@ -370,6 +368,7 @@ class OmeTiffReader:
         # tables={self.image_name + "_adata": adata_table})
 
         return sdata
+
 
 def qptiff_reader_function(
     qptiff_path: str | Path, target_path: str | Path | None = None

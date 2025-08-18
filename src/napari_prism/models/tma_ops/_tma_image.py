@@ -2690,7 +2690,7 @@ def segment_tma(
     reference_coordinate_system: str = "global",
     scale="scale0",
     inplace: bool = True,
-    **kwargs
+    **kwargs,
 ) -> SpatialData | DataArray | tuple[DataArray, BaseTransformation]:
     """
     Performs cell segmentation using Cellpose to the given image.
@@ -2777,7 +2777,7 @@ def segment_tma(
         custom_model=custom_model,
         denoise_model=denoise_model,
         preview=preview,
-        **kwargs
+        **kwargs,
     )
     segmentation_mask, transformations = output
 
