@@ -1,7 +1,7 @@
 import importlib
 from collections.abc import Callable
 from functools import wraps
-from typing import Literal, Optional
+from typing import Literal
 
 import loguru
 import numpy as np
@@ -588,7 +588,7 @@ def neighbors(
 
 # TODO: Legacy/Deprecate
 def split_by_obs(
-    adata: AnnData, obs_var: str, selections: Optional[list[str]] = None
+    adata: AnnData, obs_var: str, selections: list[str] | None = None
 ):
     """Splits an AnnData by rows, according to an .obs column.
     i.e.) If three unique images in the AnnData, and split by image, then
