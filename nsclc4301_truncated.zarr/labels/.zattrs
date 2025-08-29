@@ -1,0 +1,14 @@
+{
+    "labels": [
+        "DAPI_mask",
+        "Pan-Cytokeratin_mask",
+        "DAPI_mask",
+        "DAPI_mask",
+        "DAPI_mask",
+        "DAPI_mask",
+        "DAPI_mask",
+        "DAPI_mask",
+        "_mask",
+        "NSCLC4301_segmentation"
+    ]
+}

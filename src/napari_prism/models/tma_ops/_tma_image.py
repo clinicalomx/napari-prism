@@ -19,7 +19,6 @@ import xarray as xr
 from anndata import AnnData
 from cellpose import core, denoise, models
 from dask.array import Array
-from datatree.datatree import DataTree
 from geopandas import GeoDataFrame
 from loguru import logger
 from numpy import dtype, float64, ndarray
@@ -43,7 +42,7 @@ from spatialdata.transformations import (
     Translation,
     get_transformation_between_coordinate_systems,
 )
-from xarray import DataArray  # , DataTree
+from xarray import DataArray, DataTree
 
 from napari_prism.constants import (
     CELL_INDEX_LABEL,

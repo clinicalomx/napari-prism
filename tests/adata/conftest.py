@@ -13,11 +13,6 @@ def adata() -> AnnData:
     return sc.datasets.pbmc68k_reduced()
 
 
-# @pytest.fixture
-# def adata_with_phenograph_search(adata: Any) -> AnnData:
-#     LABELS_MATRIX = np.
-
-
 @pytest.fixture
 def adata_tree_widget_populated(qtbot, adata: Any) -> QTreeWidget:
     """

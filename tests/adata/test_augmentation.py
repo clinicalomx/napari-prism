@@ -2,6 +2,7 @@ from typing import Any
 
 from napari_prism.models.adata_ops.cell_typing._augmentation import (
     add_obs_as_var,
+    subset_adata_by_obs_category,
     subset_adata_by_var,
 )
 
@@ -21,5 +22,12 @@ def test_subset_adata_by_var(adata: Any) -> None:
     assert augmented_adata.n_vars == 3
 
 
-# def test_zarr_writeable(adata: Any) -> None:
-#     pass
+def test_subset_adata_by_obs_category(adata: Any) -> None:
+    KEEP_CATEGORIES = ["G1", "S"]
+    CATEGORY_COUNTS = 683
+    CATEGORY_KEY = "phase"
+    adata_subset = subset_adata_by_obs_category(
+        adata, obs_key=CATEGORY_KEY, obs_subset=KEEP_CATEGORIES
+    )
+    assert adata_subset.shape[0] == CATEGORY_COUNTS
+    assert set(adata_subset.obs["phase"].unique()) == set(KEEP_CATEGORIES)

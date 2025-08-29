@@ -31,14 +31,19 @@ def _build_design_matrix(Y_cond, X_cond, G, neighborhood, ct):
     Y_cond_cols = Y_cond.columns
     Y_col_sub = Y_cond_cols.get_level_values(level=1).get_loc(ct)
     Y_sub = Y_cond.xs(neighborhood, level=0)[Y_cond_cols[Y_col_sub]]
-    Y_sub = Y_sub.loc[G_drop_na.index]
+
+    # avoid KeyError when index doesn't exist
+    common_indices = Y_sub.index.intersection(G_drop_na.index)
+    Y_sub = Y_sub.loc[common_indices]
     Y_sub_remove_nan = Y_sub.dropna()
     # And dont include samples that dont have a value for the response variable
     Y_sub_remove_nan.name = f"Y(sample, ct, n | ct = {ct}, n = {neighborhood})"
 
     common_index = Y_sub_remove_nan.index
     # Get X(ct = CT), which are the transformed CT frequencies per sample
-    X_cond = X_cond.loc[G_drop_na.index]
+    X_cond = X_cond.loc[
+        common_indices
+    ]  # Use common_indices instead of G_drop_na.index
     X_cond_cols = X_cond.columns
     X_col_sub = X_cond_cols.get_level_values(level=1).get_loc(ct)
     X_sub = X_cond.loc[common_index, X_cond_cols[X_col_sub]]
@@ -89,7 +94,11 @@ def _get_x_y_by_binary_label(
 ) -> dict[str, Union[pd.Series, pd.DataFrame, np.ndarray]]:
     if attr == "X":
         feature_index = patient_adata.var_names.get_loc(feature_column)
-        feature_X = pd.DataFrame(patient_adata.X[:, feature_index])
+        feature_X = pd.Series(
+            patient_adata.X[:, feature_index],
+            name=feature_column,
+            index=patient_adata.obs_names,
+        )
 
     elif attr == "obs":
         feature_X = patient_adata.obs[feature_column]
@@ -270,7 +279,9 @@ def cellular_neighborhood_enrichment(
             compute the given `neighborhood`.
         label: Column in .obs that defines the binary label defining
             distinct `grouping` groups.
-        grouping: Column in .obs that defines distinct samples.
+        grouping: Column in .obs that defines distinct samples. The number of
+            unique groups should always be equal or more than the label (i.e.
+            a patient classification per patient and not multiple per patient.)
         pseudo_count: Pseudocount to add to the log2
             normalised proportions data. Defaults to 1e-3.
 
@@ -315,6 +326,15 @@ def cellular_neighborhood_enrichment(
                 n,
                 ct,
             )
+            # Skip regression if design matrix is empty or has insufficient data
+            if design_df.empty or len(design_df) < 2:
+                # Store NaN values for empty matrices
+                p_values[(ct, n)] = np.nan
+                coefficients[(ct, n)] = np.nan
+                t_values[(ct, n)] = np.nan
+                design_matrices[(ct, n)] = design_df
+                continue
+
             Y = design_df.iloc[:, 0]
             X = design_df.iloc[:, 1:]
             X[label] = encoder.fit_transform(X[label].values.reshape(-1, 1))

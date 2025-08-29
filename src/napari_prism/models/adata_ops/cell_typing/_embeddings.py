@@ -1,6 +1,7 @@
-""".tl module"""
+""".tl module. Backend (cpu/gpu) logic handled here."""
 
 import importlib
+import inspect
 from collections.abc import Callable
 from functools import wraps
 from typing import Literal
@@ -41,107 +42,55 @@ def set_backend(backend: Literal["cpu", "gpu"]) -> None:
     sc_backend = importlib.import_module(_current_backend["module"])
 
 
-def with_current_backend(function: Callable) -> Callable:
-    """Decorator to dynamically use current backend for scanpy-type functions.
-    Also trims keyword arguments to only those accepted by the function.
+def with_current_backend(target: Callable = None):
+    """
+    Decorator that:
+      - If given a backend function, wraps it directly
+      - If used as a decorator, wraps a custom function
 
-    If GPU backend is set, then function handles moving data to GPU memory.
-    After running the function, it always returns it back to CPU memory.
-
-    Args:
-        function: Scanpy or rapids_singlecell function to wrap.
-
-    Returns:
-        Wrapped function.
+    Provides:
+      - backend-aware AnnData handling (GPU/CPU)
+      - kwarg trimming based on function signature
+      - copy=True is forced as the default, regardless of backend
     """
 
-    @wraps(function)
-    def wrapper(adata, **kwargs):
-        backend = _current_backend["module"]
+    sig = inspect.signature(target)
+
+    @wraps(target)
+    def wrapper(adata: AnnData, *args, **kwargs):
+        backend = _current_backend.get("module")
+        if backend not in ("scanpy", "rapids_singlecell"):
+            raise RuntimeError(f"Unsupported backend: {backend}")
+
+        if adata.is_view:
+            adata = adata.copy()
+
         if backend == "rapids_singlecell":
-            if adata.is_view:
-                adata = adata.copy()
             sc_backend.get.anndata_to_GPU(adata)
 
-        function_kwargs = trim_kwargs(kwargs, function)
-        adata = function(adata, **function_kwargs)
+        # Enforce copy=True unless explicitly set
+        if "copy" in sig.parameters and "copy" not in kwargs:
+            kwargs["copy"] = True
 
-        if backend == "rapids_singlecell":
-            sc_backend.get.anndata_to_CPU(adata)
+        result = target(adata, *args, **kwargs)
 
-        return adata
+        # Evaluate copy semantics
+        copy_requested = kwargs.get("copy", True)
+        adata_out = result if copy_requested else adata
+
+        keep_on_gpu = kwargs.get("keep_on_gpu", False)
+        if backend == "rapids_singlecell" and not keep_on_gpu:
+            sc_backend.get.anndata_to_CPU(adata_out)
+
+        return adata_out
 
     return wrapper
 
 
-def trim_kwargs(function_kwargs: dict, function: Callable) -> dict:
-    """
-    Trim function_kwargs to only those accepted by function.
-
-    Args:
-        function_kwargs: Keyword arguments to trim.
-        function: Function to trim keyword arguments for.
-
-    Returns:
-        Trimmed keyword arguments.
-    """
-    return {
-        k: v
-        for k, v in function_kwargs.items()
-        if k in function.__code__.co_varnames
-    }
-
-
-@with_current_backend
-def pca(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
-    """
-    Perform principal components analysis. Wraps `sc.pp/tl.pca` or
-    `rsc.pl/tl.pca`.
-
-    Args:
-        adata: Anndata object.
-        copy: Return a copy instead of writing inplace.
-        kwargs: Additional keyword arguments to pass to `pp/tl.pca`.
-
-    Returns:
-        Anndata object with PCA results in .obsm. If `copy` is False, modifies
-        the AnnData object in place and returns None.
-    """
-    return sc_backend.tl.pca(adata, copy=copy, **kwargs)
-
-
-@with_current_backend
-def umap(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
-    """
-    Perform UMAP. Wraps `sc.pl/tl.umap` or `rsc.tl.umap`.
-
-    Args:
-        adata: Anndata object.
-        copy: Return a copy instead of writing inplace.
-        kwargs: Additional keyword arguments to pass to `tl.umap`.
-
-    Returns:
-        Anndata object with UMAP results in .obsm. If `copy` is False, modifies
-        the AnnData object in place and returns None.
-    """
-    return sc_backend.tl.umap(adata, copy=copy, **kwargs)
-
-
-@with_current_backend
-def tsne(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
-    """
-    Perform t-SNE. Wraps `sc.pl/tl.tsne` or `rsc.tl.tsne`.
-
-    Args:
-        adata: Anndata object.
-        copy: Return a copy instead of writing inplace.
-        kwargs: Additional keyword arguments to pass to `tl.tsne`.
-
-    Returns:
-        Anndata object with t-SNE results in .obsm. If `copy` is False, modifies
-        the AnnData object in place and returns None.
-    """
-    return sc_backend.tl.tsne(adata, copy=copy, **kwargs)
+# pass through version,
+pca = with_current_backend(sc_backend.tl.pca)
+umap = with_current_backend(sc_backend.tl.umap)
+tsne = with_current_backend(sc_backend.tl.tsne)
 
 
 @with_current_backend
@@ -163,6 +112,7 @@ def harmony(adata: AnnData, copy: bool = True, **kwargs) -> AnnData:
     if copy:
         adata = adata.copy()
 
+    print(adata)
     assert "key" in kwargs
     assert "basis" in kwargs
 

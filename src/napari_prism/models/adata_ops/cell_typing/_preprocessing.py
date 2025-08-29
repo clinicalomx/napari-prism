@@ -1,7 +1,7 @@
 import importlib
 from collections.abc import Callable
 from functools import wraps
-from typing import Literal, Optional
+from typing import Literal
 
 import loguru
 import numpy as np
@@ -251,14 +251,23 @@ def filter_by_obs_quantile(
         )
         max_quantile = MAX_DEFAULT
 
+    # Calculate quantile values on original data before filtering
+    min_obs_val = None
+    max_obs_val = None
+
     if min_quantile is not None:
         assert min_quantile >= 0 and min_quantile <= 1
         min_obs_val = np.quantile(adata.obs[obs_col], min_quantile)
-        adata = adata[adata.obs[obs_col] > min_obs_val]
 
     if max_quantile is not None:
         assert max_quantile >= 0 and max_quantile <= 1
         max_obs_val = np.quantile(adata.obs[obs_col], max_quantile)
+
+    # Apply filters
+    if min_obs_val is not None:
+        adata = adata[adata.obs[obs_col] > min_obs_val]
+
+    if max_obs_val is not None:
         adata = adata[adata.obs[obs_col] < max_obs_val]
 
     if copy:
@@ -588,7 +597,7 @@ def neighbors(
 
 # TODO: Legacy/Deprecate
 def split_by_obs(
-    adata: AnnData, obs_var: str, selections: Optional[list[str]] = None
+    adata: AnnData, obs_var: str, selections: list[str] | None = None
 ):
     """Splits an AnnData by rows, according to an .obs column.
     i.e.) If three unique images in the AnnData, and split by image, then

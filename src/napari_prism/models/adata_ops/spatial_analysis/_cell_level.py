@@ -40,16 +40,10 @@ def compute_targeted_degree_ratio(
     """
     mat = adjacency_matrix if directed else symmetrise_graph(adjacency_matrix)
 
-    a_ix = list(
-        adata.obs.query(f"{phenotype_column} == '{phenotype_A}").index.astype(
-            int
-        )
-    )
-    b_ix = list(
-        adata.obs.query(f"{phenotype_column} == '{phenotype_B}").index.astype(
-            int
-        )
-    )
+    a_mask = adata.obs[phenotype_column] == phenotype_A
+    b_mask = adata.obs[phenotype_column] == phenotype_B
+    a_ix = list(np.where(a_mask)[0])
+    b_ix = list(np.where(b_mask)[0])
     a = mat[a_ix]  # A rows -> all cols
     ab = mat[np.ix_(a_ix, b_ix)]  # A rows -> B cols
 
