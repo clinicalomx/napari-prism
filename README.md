@@ -49,7 +49,7 @@ python>=3.10
 spatialdata>=0.5.0
 spatialdata-plot>=0.2.11
 napari[all]
-napari_matplotlib<2.0.2
+napari_matplotlib>=3.0.0
 napari_spatialdata>=0.5.7
 dask<2024.11.12
 cellpose>=3.0.10
