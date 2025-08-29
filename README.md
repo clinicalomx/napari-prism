@@ -33,7 +33,7 @@ Install [miniconda] or anaconda.
 Open the conda terminal and create a simple environment:
 
 ```bash
-conda create -n prism python=3.10 -c conda-forge
+conda create -n prism python -c conda-forge
 ```
 
 Activate the environment before executing the instructions in the Installation section.
@@ -42,20 +42,19 @@ Activate the environment before executing the instructions in the Installation s
 conda activate prism
 ```
 
-### List of Dependencies
+### List of Dependencies (Version specific)
 
 ```
-python==3.10
-spatialdata<=0.2.5.post0
-spatialdata-plot<=0.2.7
-napari[all]>=0.4.19.post1
+python>=3.10
+spatialdata>=0.5.0
+spatialdata-plot>=0.2.11
+napari[all]
 napari_matplotlib<2.0.2
-napari_spatialdata<=0.5.3
-dask<2024.12.1
+napari_spatialdata>=0.5.7
+dask<2024.11.12
 cellpose>=3.0.10
 scanpy>=1.10.0
-xarray<=2024.7.0
-spatialdata_plot<=0.2.7
+xarray
 ```
 
 ## Installation: CPU only
@@ -91,6 +90,12 @@ pip install napari-prism[gpu] --extra-index-url=https://pypi.nvidia.com
 
 To run [cellpose] on the GPU, install the [CUDA version of PyTorch](https://pytorch.org/get-started/locally/). You may need to [remove any installed CPU versions of PyTorch](https://github.com/MouseLand/cellpose?tab=readme-ov-file#gpu-version-cuda-on-windows-or-linux).
 
+The new [cellpose] v4 adopts the SAM foundation model for generalization. While this may reduce the need for fine-tuning, we find that this needs higher end GPUs with more VRAM. If this is an issue, consider installing Cellpose 3, i.e:
+
+```bash
+pip install cellpose<4
+```
+
 ## Getting Started
 
 To start using `napari-prism`, please see the [tutorials](https://napari-prism.readthedocs.io/en/latest/notebooks/getting_started.html#):
@@ -119,7 +124,7 @@ Adding shapes like `tma_envelopes` may cause segmentation faults (https://github
 
 ## Citation
 
-\*\*tba
+Rafael Tubelleza, Aaron Kilgallon, Chin Wee Tan, James Monkman, John F Fraser, Arutha Kulasinghe, PRISM: a Python package for interactive and integrated analysis of multiplexed tissue microarrays, NAR Genomics and Bioinformatics, Volume 7, Issue 3, September 2025, lqaf114, https://doi.org/10.1093/nargab/lqaf114
 
 [napari]: https://github.com/napari/napari
 [@napari]: https://github.com/napari
