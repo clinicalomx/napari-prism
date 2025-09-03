@@ -33,22 +33,22 @@ from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
 from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
 from napari_prism import pp  # refactored preprocessing class to funcs only
-from napari_prism.models._utils import (
-    overwrite_element as disk_overwrite_element,
-)
-from napari_prism.models.adata_ops.cell_typing._augmentation import (
+from napari_prism.models.adata_ops.cell_typing.augmentation import (
     add_obs_as_var,
     subset_adata_by_obs_category,
     subset_adata_by_var,
 )
-from napari_prism.models.adata_ops.cell_typing._clusteval import (
+from napari_prism.models.adata_ops.cell_typing.clusteval import (
     ClusteringSearchEvaluator,
 )
-from napari_prism.models.adata_ops.cell_typing._clustsearch import (
+from napari_prism.models.adata_ops.cell_typing.clustsearch import (
     HybridPhenographSearch,
     ScanpyClusteringSearch,
 )
-from napari_prism.models.adata_ops.cell_typing._tree import AnnDataNodeQT
+from napari_prism.models.adata_ops.cell_typing.tree import AnnDataNodeQT
+from napari_prism.models.utils import (
+    overwrite_element as disk_overwrite_element,
+)
 from napari_prism.widgets._widget_utils import (
     BaseNapariWidget,
     EditableTable,

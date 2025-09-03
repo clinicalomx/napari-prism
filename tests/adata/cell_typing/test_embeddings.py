@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from napari_prism.models.adata_ops.cell_typing._embeddings import (
+from napari_prism.models.adata_ops.cell_typing.embeddings import (
     _current_backend,
     harmony,
     pca,

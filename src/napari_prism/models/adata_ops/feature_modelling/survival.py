@@ -13,7 +13,7 @@ from sksurv.linear_model import CoxnetSurvivalAnalysis
 from sksurv.nonparametric import kaplan_meier_estimator
 from sksurv.util import Surv
 
-from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
+from napari_prism.models.adata_ops.feature_modelling.obs import ObsAggregator
 
 
 def get_sample_level_adata(

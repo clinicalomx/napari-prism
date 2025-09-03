@@ -19,7 +19,7 @@ from pandas import DataFrame
 from phenograph.core import parallel_jaccard_kernel
 from scipy import sparse as sp
 
-from napari_prism.models._utils import overrides
+from napari_prism.models.utils import overrides
 
 MAX_GPU_CLUST_ITER = 500
 

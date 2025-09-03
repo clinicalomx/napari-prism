@@ -2,10 +2,10 @@ import pytest
 import scanpy as sc
 from anndata import AnnData
 
-from napari_prism.models.adata_ops.cell_typing._clusteval import (
+from napari_prism.models.adata_ops.cell_typing.clusteval import (
     ClusteringSearchEvaluator,
 )
-from napari_prism.models.adata_ops.cell_typing._clustsearch import (
+from napari_prism.models.adata_ops.cell_typing.clustsearch import (
     HybridPhenographSearch,
 )
 

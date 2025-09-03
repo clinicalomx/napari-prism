@@ -8,7 +8,7 @@ from magicgui.widgets import ComboBox, Container, Label, Table, create_widget
 from napari.utils.events import EmitterGroup
 from spatialdata import SpatialData
 
-from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
+from napari_prism.models.adata_ops.feature_modelling.obs import ObsAggregator
 from napari_prism.widgets.adata_ops._base_widgets import AnnDataOperatorWidget
 
 NULL_CHOICE = "-----"

@@ -10,7 +10,7 @@ from anndata import AnnData
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
 
-from napari_prism.models.adata_ops.feature_modelling._obs import ObsAggregator
+from napari_prism.models.adata_ops.feature_modelling.obs import ObsAggregator
 
 
 # Helpers

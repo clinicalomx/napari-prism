@@ -1,4 +1,4 @@
-from .feature_modelling._obs import ObsAggregator
+from .feature_modelling.obs import ObsAggregator
 
 __all__ = [
     "ObsAggregator",
