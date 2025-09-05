@@ -1,48 +1,152 @@
+"""
+Dev Notes;
+- Gcross -> Can have samples, ncellsa, ncellsb, radii as one single DataArray
+- Alternatively can have one cell type pair as one DataArray
+- Then all comparisons as one Dataset
+"""
 import itertools as it
-from dataclasses import dataclass
 from typing import Any
 
 import anndata as ad
 import numpy as np
+import xarray as xr
 from scipy.spatial import ConvexHull
 from sklearn.neighbors import NearestNeighbors
 
 from napari_prism.models.adata_ops.spatial_analysis.schema import (
-    SpatialMetric,
-    SpatialMetricResults,
+    CellEntity,
+    create_spatial_metric,
 )
 
 
-@dataclass
-class GCrossMetric(SpatialMetric):
-    radii: Any = None
+@xr.register_dataarray_accessor("gcross") # potentially 'distribution'
+class GCrossMetricAccessor:
+    def __init__(self, xarray_obj):
+        self._obj = xarray_obj
 
-    def _check_compartment_constraint(self):
+    def validate(self):
         """
-        Enforce exclusively global vs global or compartment vs compartment
-        comparisons.
+        a) Ensure there's a second population to compare against.
+        b) Enforce exclusively global vs global or compartment vs compartment
+            comparisons.
         """
-        if (self.cell_population_a.compartment is None) != (
-            self.cell_population_b.compartment is None
+        self._obj.spatial_metric.validate()
+        assert "radius" in self._obj.coords
+        cell_population_a = self._obj.coords.get("cell_population_a", None)
+        cell_population_b = self._obj.coords.get("cell_population_b", None)
+
+        if cell_population_b is None:
+            raise AttributeError(
+                "Need a second cell population for GCross metrics."
+            )
+
+        def _retrieve_compartment(label):
+            print(label)
+            if "@" in label:
+                return label.split("@")[-1]
+            else:
+                return None
+
+        compartment_a = _retrieve_compartment(cell_population_a)
+        compartment_b = _retrieve_compartment(cell_population_b)
+
+        if (compartment_a is None) != (
+            compartment_b is None
         ):
             raise ValueError(
                 "Cannot compare global populations to compartmental"
                 "populations"
             )
+        return self._obj
 
-    def __post_init__(self):
-        self._check_compartment_constraint()
+    def plot(self):
+        self._obj.spatial_metric.plot()
 
-        assert len(self.radii) == len(self.values)
+    def pretty_print(self):
+        self._obj.spatial_metric.pretty_print()
 
-    def get_auc(self):
-        return compute_auc_1d(self.values, self.radii)
+    def auc(self, save_original=False):
+        da = self._obj.gcross.validate().copy()
+
+        # Extract radius coordinate for integration
+        xs = da.coords["radius"]
+
+        # Apply AUC along radius dimension
+        auc_values = xr.apply_ufunc(
+            compute_auc_1d,
+            da,
+            input_core_dims=[["radius"]],
+            kwargs={"xs": xs},
+            vectorize=True,
+            dask="parallelized",
+            output_dtypes=[float],
+        )
+
+        # Build new DataArray with radius removed, keeping other coords
+        result = xr.DataArray(
+            data=auc_values.values,
+            dims=["sample_id", "cell_population_a", "cell_population_b"],
+            coords={
+                "sample_id": da.coords["sample_id"],
+                "cell_population_a": da.coords["cell_population_a"],
+                "cell_population_b": da.coords["cell_population_b"],
+                "metric_name": (
+                    ["sample_id", "cell_population_a", "cell_population_b"],
+                    np.full(
+                        (da.sizes["sample_id"], da.sizes["cell_population_a"], da.sizes["cell_population_b"]),
+                        "gcross_auc",
+                        dtype=object,
+                    ),
+                ),
+            },
+            attrs={
+                **da.attrs,
+                "metric_name": "gcross_auc",
+            },
+        )
+
+        # Optionally stash original
+        if save_original:
+            result.attrs["parameters"] = {
+                **result.attrs.get("parameters", {}),
+                "original_radii": xs.values,
+                "original_values": da.values,
+            }
+
+        return result
 
 
-@dataclass
-class GCrossResults(SpatialMetricResults):
-    pass
+def create_gcross_metric(
+    radii: np.ndarray,
+    values: np.ndarray,
+    cell_population_a: CellEntity,
+    cell_population_b: CellEntity,
+    sample_id: str,
+    parameters: dict[str, Any] | None = None
+) -> xr.DataArray:
+    """
+    Create a GCross metric as a DataArray.
 
+    Args:
+        radii: The radius values
+        values: The GCross values (same length as radii)
+        cell_population_a: Query cell population
+        cell_population_b: Target cell population
+        parameters: Additional parameters
+    """
+    assert len(radii) == len(values), "Radii and values must have same length"
+
+    return create_spatial_metric(
+        values=values,
+        sample_id=sample_id,
+        dims=['radius'],
+        coords={'radius': radii},
+        cell_population_a=cell_population_a,
+        cell_population_b=cell_population_b,
+        metric_name="gcross",
+        directional=True,
+        parameters=parameters
+    ).gcross.validate()
 
 # single sample func
 def _gcross_single_sample_single_pair(
@@ -73,7 +177,7 @@ def _gcross_single_sample_single_pair(
     ):
         # print(f"Skipping {query_cell_type} vs {target_cell_type} in sample {adata_subset.obs[sample_key].unique()[0]} due to insufficient cell count.")
         null_result = np.zeros(num_segments + 1) * np.nan
-        return null_result, null_result
+        return np.linspace(0, max_radius, num_segments + 1), null_result
 
     if correction is None:
         xs, g_cross = gcross_subset(
@@ -113,7 +217,6 @@ def _gcross_single_sample_single_pair(
         raise NotImplementedError()
 
     return xs, g_cross
-
 
 def gcross(
     adata: ad.AnnData,
@@ -214,9 +317,33 @@ def gcross(
             for args_tuple, result in zip(args, results, strict=False)
         }
 
-    if parse_schema:
+    if not parse_schema:
         return g_cross_results
+    else:
+        results = []
+        for patient_id, v in g_cross_results.items():
+            for ct_p, res in v.items():
+                a, b = ct_p
+                xs, gc = res
+                results.append(
+                    create_gcross_metric(
+                        radii=xs,
+                        values=gc,
+                        cell_population_a=CellEntity(a),
+                        cell_population_b=CellEntity(b),
+                        sample_id=patient_id
+                    )
+                )
+                print(res)
 
+        together = xr.concat(
+            results, dim="sample_id", combine_attrs="no_conflicts")
+
+        together = together.set_index(
+            sample=("sample_id", "cell_population_a", "cell_population_b"))
+        together = together.unstack("sample")
+        together = together.transpose("sample_id", ..., "radius")
+        return together
 
 # Concrete Functions; gcross may be a class
 def get_closest_neighbors(
@@ -473,15 +600,16 @@ def _compute_kaplan_meier_estimate(
 
 
 def compute_auc_1d(
-    distribution_values: np.ndarray | list,
-    distribution_xs: np.ndarray | list = None,
+    values: np.ndarray | list,
+    xs: np.ndarray | list = None,
+    axis: int = -1
 ):
     """
     Compute the area under the curve for a 1D distribution.
     """
-    if distribution_xs is not None:
-        return np.trapz(y=distribution_values, x=distribution_xs)
-    return np.trapz(y=distribution_values)
+    if xs is not None:
+        return np.trapezoid(y=values, x=xs, axis=axis)
+    return np.trapezoid(y=values, axis=axis)
 
 
 # possible utils
