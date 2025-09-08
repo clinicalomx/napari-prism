@@ -128,37 +128,3 @@ def simulate_poisson_roi_data_from_adata(
     adata.obsm[spatial_key_added] = all_coords
 
     return adata
-
-
-def homogeneous_gcross_theoretical_values(
-    ct_propotions, roi_radius, mean_num_cells, gcross_radii
-):
-    """
-    Calculates theoretical values of gcross for a homogeneous poisson process.
-
-    By C.J.
-
-    Parameters:
-    - ct_proportions (list of float): Proportion of cell types. Length gives number of types
-    - roi_radius (float): Radius of the circular domain (centered in the middle of the square).
-    - mean_num_cells (float): Average number of cells in the ROI.
-    - gcross_radii (list of float): Radii the gcross has been calculated at.
-
-    Returns:
-    - theoretical_values (np.array): Matrix of theoretical values for given process proportions
-        and gcross radii. Shape is (num of gcross radii, num of cell types).
-    """
-
-    area_circle = np.pi * (roi_radius**2)
-    ct_propotions = np.array(ct_propotions)
-    unit_rates = (
-        ct_propotions * mean_num_cells / area_circle
-    )  # Expected number of cells in circle
-
-    theoretical_value_exponent = (
-        -np.expand_dims(unit_rates, axis=0)
-        * (np.expand_dims(gcross_radii, axis=1) ** 2)
-        * np.pi
-    )
-    theoretical_values = 1 - np.exp(theoretical_value_exponent)
-    return theoretical_values

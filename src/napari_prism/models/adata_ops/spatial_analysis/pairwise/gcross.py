@@ -4,6 +4,7 @@ Dev Notes;
 - Alternatively can have one cell type pair as one DataArray
 - Then all comparisons as one Dataset
 """
+
 import itertools as it
 from typing import Any
 
@@ -15,11 +16,12 @@ from sklearn.neighbors import NearestNeighbors
 
 from napari_prism.models.adata_ops.spatial_analysis.schema import (
     CellEntity,
+    CompartmentEntity,
     create_spatial_metric,
 )
 
 
-@xr.register_dataarray_accessor("gcross") # potentially 'distribution'
+@xr.register_dataarray_accessor("gcross")  # potentially 'distribution'
 class GCrossMetricAccessor:
     def __init__(self, xarray_obj):
         self._obj = xarray_obj
@@ -41,7 +43,6 @@ class GCrossMetricAccessor:
             )
 
         def _retrieve_compartment(label):
-            print(label)
             if "@" in label:
                 return label.split("@")[-1]
             else:
@@ -50,9 +51,7 @@ class GCrossMetricAccessor:
         compartment_a = _retrieve_compartment(cell_population_a)
         compartment_b = _retrieve_compartment(cell_population_b)
 
-        if (compartment_a is None) != (
-            compartment_b is None
-        ):
+        if (compartment_a is None) != (compartment_b is None):
             raise ValueError(
                 "Cannot compare global populations to compartmental"
                 "populations"
@@ -82,38 +81,53 @@ class GCrossMetricAccessor:
             output_dtypes=[float],
         )
 
-        # Build new DataArray with radius removed, keeping other coords
-        result = xr.DataArray(
-            data=auc_values.values,
-            dims=["sample_id", "cell_population_a", "cell_population_b"],
-            coords={
-                "sample_id": da.coords["sample_id"],
-                "cell_population_a": da.coords["cell_population_a"],
-                "cell_population_b": da.coords["cell_population_b"],
-                "metric_name": (
-                    ["sample_id", "cell_population_a", "cell_population_b"],
-                    np.full(
-                        (da.sizes["sample_id"], da.sizes["cell_population_a"], da.sizes["cell_population_b"]),
-                        "gcross_auc",
-                        dtype=object,
-                    ),
-                ),
-            },
-            attrs={
-                **da.attrs,
-                "metric_name": "gcross_auc",
-            },
-        )
+        auc_values = auc_values.assign_coords(metric_name=["gcross_auc"])
+        return auc_values
 
-        # Optionally stash original
-        if save_original:
-            result.attrs["parameters"] = {
-                **result.attrs.get("parameters", {}),
-                "original_radii": xs.values,
-                "original_values": da.values,
-            }
+    def query(self):
+        pass
 
-        return result
+    def test(self, adata):
+        """Test if GCross curve is beyond some homogenous process."""
+        indices = self._obj.sample_id  # noqa: F841
+        # convex hull;
+        # estimate lambda / density
+        # theoretical G under given Xs / radii
+        # Test observed G vs theoretical G
+
+
+def homogeneous_gcross_theoretical_values(
+    ct_propotions, roi_radius, mean_num_cells, gcross_radii
+):
+    """
+    Calculates theoretical values of gcross for a homogeneous poisson process.
+
+    By C.J.
+
+    Parameters:
+    - ct_proportions (list of float): Proportion of cell types. Length gives number of types
+    - roi_radius (float): Radius of the circular domain (centered in the middle of the square).
+    - mean_num_cells (float): Average number of cells in the ROI.
+    - gcross_radii (list of float): Radii the gcross has been calculated at.
+
+    Returns:
+    - theoretical_values (np.array): Matrix of theoretical values for given process proportions
+        and gcross radii. Shape is (num of gcross radii, num of cell types).
+    """
+
+    area_circle = np.pi * (roi_radius**2)
+    ct_propotions = np.array(ct_propotions)
+    unit_rates = (
+        ct_propotions * mean_num_cells / area_circle
+    )  # Expected number of cells in circle
+
+    theoretical_value_exponent = (
+        -np.expand_dims(unit_rates, axis=0)
+        * (np.expand_dims(gcross_radii, axis=1) ** 2)
+        * np.pi
+    )
+    theoretical_values = 1 - np.exp(theoretical_value_exponent)
+    return theoretical_values
 
 
 def create_gcross_metric(
@@ -122,7 +136,8 @@ def create_gcross_metric(
     cell_population_a: CellEntity,
     cell_population_b: CellEntity,
     sample_id: str,
-    parameters: dict[str, Any] | None = None
+    radii_units: str | None = None,
+    parameters: dict[str, Any] | None = None,
 ) -> xr.DataArray:
     """
     Create a GCross metric as a DataArray.
@@ -135,18 +150,23 @@ def create_gcross_metric(
         parameters: Additional parameters
     """
     assert len(radii) == len(values), "Radii and values must have same length"
-
+    # values = np.array(values).reshape(1, 1, 1, 1, -1)
     return create_spatial_metric(
         values=values,
         sample_id=sample_id,
-        dims=['radius'],
-        coords={'radius': radii},
+        dims=["radius"],
+        coords={
+            "radius": xr.Variable(
+                ("radius",), radii, attrs={"units": radii_units}
+            )
+        },
         cell_population_a=cell_population_a,
         cell_population_b=cell_population_b,
         metric_name="gcross",
         directional=True,
-        parameters=parameters
+        parameters=parameters,
     ).gcross.validate()
+
 
 # single sample func
 def _gcross_single_sample_single_pair(
@@ -157,6 +177,9 @@ def _gcross_single_sample_single_pair(
     cell_type_key: str,
     query_cell_type: str,
     target_cell_type: str,
+    compartment_key: str | None = None,
+    query_cell_compartment: str | None = None,
+    target_cell_compartment: str | None = None,
     max_radius: int | float = 1000,
     num_segments: int = 50,
     correction: str | None = None,
@@ -165,11 +188,33 @@ def _gcross_single_sample_single_pair(
 ):
     adata_subset = adata[adata.obs[sample_key] == sample_name]
     spatial_coordinates = adata_subset.obsm[spatial_key]
+
     # iloc indexing
     query_ix = np.where(adata_subset.obs[cell_type_key] == query_cell_type)[0]
     target_ix = np.where(adata_subset.obs[cell_type_key] == target_cell_type)[
         0
     ]
+
+    if (query_cell_compartment is None) != (target_cell_compartment is None):
+        raise ValueError(
+            "Cannot compare global populations to compartmental" "populations"
+        )
+
+    if query_cell_compartment is not None:
+        if compartment_key is None:
+            raise ValueError(
+                "Provide a key or column in .obs for compartment labels."
+            )
+        else:
+            compartment_query_ix = np.where(
+                adata_subset.obs[compartment_key] == query_cell_compartment
+            )[0]
+            compartment_target_ix = np.where(
+                adata_subset.obs[compartment_key] == target_cell_compartment
+            )[0]
+            query_ix = np.intersect1d(query_ix, compartment_query_ix)
+            target_ix = np.intersect1d(target_ix, compartment_target_ix)
+
     # Check if
     if (
         len(query_ix) < minimum_cell_count
@@ -218,20 +263,25 @@ def _gcross_single_sample_single_pair(
 
     return xs, g_cross
 
+
 def gcross(
     adata: ad.AnnData,
     sample_key: str,
     cell_type_key: str,
     spatial_key: str = "spatial",
+    spatial_units: str | None = None,
     max_radius: int | float = 100,
     num_segments: int = 50,
     correction: str | None = None,
     num_interpoints: int = 100,
     query_cell_types: str | list[str] | None = None,
     target_cell_types: str | list[str] | None = None,
+    compartment_key: str | None = None,
+    query_cell_compartment: str | None = None,
+    target_cell_compartment: str | None = None,
     n_processes: int = 1,
     minimum_cell_count: int = 10,  # If either query or target cell type has less than this number of cells, skip
-    parse_schema: bool = False,  # To return obj or not
+    as_xarray: bool = False,  # To return obj or not
 ):
     # Perform for each sample;
     samples = adata.obs[sample_key].unique().tolist()
@@ -278,6 +328,9 @@ def gcross(
                     cell_type_key=cell_type_key,
                     query_cell_type=query_cell_type,
                     target_cell_type=target_cell_type,
+                    compartment_key=compartment_key,
+                    query_cell_compartment=query_cell_compartment,
+                    target_cell_compartment=target_cell_compartment,
                     max_radius=max_radius,
                     num_segments=num_segments,
                     correction=correction,
@@ -299,6 +352,9 @@ def gcross(
                 cell_type_key,
                 query_cell_type,  # 5
                 target_cell_type,  # 6
+                compartment_key,
+                query_cell_compartment,
+                target_cell_compartment,
                 max_radius,
                 num_segments,
                 correction,
@@ -317,33 +373,44 @@ def gcross(
             for args_tuple, result in zip(args, results, strict=False)
         }
 
-    if not parse_schema:
+    if not as_xarray:
         return g_cross_results
     else:
         results = []
+        q_comp = None
+        if query_cell_compartment:
+            q_comp = CompartmentEntity(query_cell_compartment, compartment_key)
+        t_comp = None
+        if target_cell_compartment:
+            t_comp = CompartmentEntity(
+                target_cell_compartment, compartment_key
+            )
         for patient_id, v in g_cross_results.items():
+            patient_id = str(patient_id)
             for ct_p, res in v.items():
                 a, b = ct_p
+                a_instance = CellEntity(a, cell_type_key, q_comp)
+                b_instance = CellEntity(b, cell_type_key, t_comp)
                 xs, gc = res
                 results.append(
                     create_gcross_metric(
                         radii=xs,
                         values=gc,
-                        cell_population_a=CellEntity(a),
-                        cell_population_b=CellEntity(b),
-                        sample_id=patient_id
+                        cell_population_a=a_instance,
+                        cell_population_b=b_instance,
+                        sample_id=patient_id,
+                        radii_units=spatial_units,
+                        parameters={
+                            "correction": correction,
+                            "minimum_cell_count": minimum_cell_count,
+                        },
                     )
                 )
-                print(res)
 
-        together = xr.concat(
-            results, dim="sample_id", combine_attrs="no_conflicts")
+        together = xr.combine_by_coords(results, combine_attrs="no_conflicts")
 
-        together = together.set_index(
-            sample=("sample_id", "cell_population_a", "cell_population_b"))
-        together = together.unstack("sample")
-        together = together.transpose("sample_id", ..., "radius")
         return together
+
 
 # Concrete Functions; gcross may be a class
 def get_closest_neighbors(
@@ -601,8 +668,8 @@ def _compute_kaplan_meier_estimate(
 
 def compute_auc_1d(
     values: np.ndarray | list,
-    xs: np.ndarray | list = None,
-    axis: int = -1
+    xs: np.ndarray | list | None = None,
+    axis: int = -1,
 ):
     """
     Compute the area under the curve for a 1D distribution.
@@ -615,7 +682,7 @@ def compute_auc_1d(
 # possible utils
 def get_distances_to_convex_hull_edge(
     spatial_coordinates: np.ndarray,
-    query_indices: np.ndarray | list = None,
+    query_indices: np.ndarray | list | None = None,
     num_interpoints: int = 100,
 ):
     """
