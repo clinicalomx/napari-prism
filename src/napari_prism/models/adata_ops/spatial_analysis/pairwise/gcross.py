@@ -19,6 +19,9 @@ from napari_prism.models.adata_ops.spatial_analysis.schema import (
     CompartmentEntity,
     create_spatial_metric,
 )
+from napari_prism.models.adata_ops.spatial_analysis.utils import (
+    get_closest_neighbors,
+)
 
 
 @xr.register_dataarray_accessor("gcross")  # potentially 'distribution'
@@ -410,39 +413,6 @@ def gcross(
         together = xr.combine_by_coords(results, combine_attrs="no_conflicts")
 
         return together
-
-
-# Concrete Functions; gcross may be a class
-def get_closest_neighbors(
-    spatial_coordinates: np.ndarray,
-    query_indices: np.ndarray | list,
-    target_indices: np.ndarray | list,
-):
-    """
-    Given a matrix of spatial coordinates in euclidean space, i.e. N x 2, get
-    the closest neighbors for each query index in the target indices.
-
-    Returns:
-        distances: N x 1 array of distances to the closest neighbor, where
-            N is the number of query indices.
-        indices: N x 1 array of indices of the closest neighbor in the target indices.
-
-    """
-    if set(query_indices) == set(target_indices):
-        # If query and target indices are the same, use nearest neighbors
-        # to get the closest neighbor excluding self.
-        nn = NearestNeighbors(n_neighbors=2)
-        nn.fit(spatial_coordinates[target_indices])
-        distances, indices = nn.kneighbors(spatial_coordinates[query_indices])
-        distances = distances[:, 1]  # exclude self distts
-        indices = indices[:, 1]  # exclude self indices
-
-    else:
-        nn = NearestNeighbors(n_neighbors=1)
-        nn.fit(spatial_coordinates[target_indices])
-        distances, indices = nn.kneighbors(spatial_coordinates[query_indices])
-
-    return distances, indices
 
 
 def gcross_subset(
