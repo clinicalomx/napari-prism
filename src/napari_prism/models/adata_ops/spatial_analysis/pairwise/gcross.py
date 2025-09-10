@@ -14,13 +14,13 @@ import xarray as xr
 from scipy.spatial import ConvexHull
 from sklearn.neighbors import NearestNeighbors
 
+from napari_prism.models.adata_ops.spatial_analysis.graph import (
+    get_closest_neighbors,
+)
 from napari_prism.models.adata_ops.spatial_analysis.schema import (
     CellEntity,
     CompartmentEntity,
     create_spatial_metric,
-)
-from napari_prism.models.adata_ops.spatial_analysis.utils import (
-    get_closest_neighbors,
 )
 
 
@@ -284,7 +284,7 @@ def gcross(
     target_cell_compartment: str | None = None,
     n_processes: int = 1,
     minimum_cell_count: int = 10,  # If either query or target cell type has less than this number of cells, skip
-    as_xarray: bool = False,  # To return obj or not
+    as_xarray: bool = True,  # To return obj or not
 ):
     # Perform for each sample;
     samples = adata.obs[sample_key].unique().tolist()

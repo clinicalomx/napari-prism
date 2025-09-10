@@ -4,7 +4,15 @@ def multitype_f():
     """
 
 
-def distance_to_boundary():
+def distance_to_shape(sdata):
+    pass
+
+
+def distance_to_cluster_edge():
+    pass
+
+
+def distance_to_cluster_centroid():
     pass
 
 

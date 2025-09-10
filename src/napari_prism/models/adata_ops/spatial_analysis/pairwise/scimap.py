@@ -1,166 +1,95 @@
 """Spatial analyses which generate metrics at the cell level."""
 
 from itertools import combinations_with_replacement
-from typing import Literal
+from typing import Any
 
 import numpy as np
 import pandas as pd
-import scipy
+import xarray as xr
 from anndata import AnnData
 from joblib import Parallel, delayed
-from scipy.sparse import csr_matrix
 
-from napari_prism.models.adata_ops.spatial_analysis.utils import (
-    symmetrise_graph,
+from napari_prism.models.adata_ops.spatial_analysis.graph import (
+    compute_pair_interactions,
 )
+from napari_prism.models.adata_ops.spatial_analysis.schema import CellEntity
 
 
-# Pairwise Cell Computations
-def compute_targeted_degree_ratio(
-    adata,
-    adjacency_matrix,
-    phenotype_column,
-    phenotype_A,  # source phenotype
-    phenotype_B,  # target phenotype
-    directed=False,
-):
-    """For each node in the adjacency matrix, compute the ratio of its
-    targets that are of phenotype_pair.
+@xr.register_dataarray_accessor("proximity_density")
+class ProximityDensityMetricAccessor:
+    def __init__(self, xarray_obj):
+        self._obj = xarray_obj
 
-    If directed, then this becomes the outdegree ratio. i.e.) If
-    KNN, then the score is the ratio of its closest K neighbors being of
-    the other specified type.
+    def validate(self):
+        """
+        a) Ensure there's a second population to compare against.
+        b) Enforce exclusively global vs global or compartment vs compartment
+            comparisons.
+        """
+        self._obj.spatial_metric.validate()
+        assert "radius" in self._obj.coords
+        cell_population_a = self._obj.coords.get("cell_population_a", None)
+        cell_population_b = self._obj.coords.get("cell_population_b", None)
 
-    If not directed, then this becomes a simple degree ratio, with the graph
-    being symmetrised (enforce A->B, then B->A).
-
-    """
-    mat = adjacency_matrix if directed else symmetrise_graph(adjacency_matrix)
-
-    a_mask = adata.obs[phenotype_column] == phenotype_A
-    b_mask = adata.obs[phenotype_column] == phenotype_B
-    a_ix = list(np.where(a_mask)[0])
-    b_ix = list(np.where(b_mask)[0])
-    a = mat[a_ix]  # A rows -> all cols
-    ab = mat[np.ix_(a_ix, b_ix)]  # A rows -> B cols
-
-    a_edge_degrees = a.sum(axis=1)  # Total connections for each A cell
-    a_target_degrees = ab.sum(
-        axis=1
-    )  # Total connections to B cells for each A cell
-
-    a_ab = np.divide(
-        a_target_degrees, a_edge_degrees
-    )  # For each A cell, ratio of B connections to total connections
-
-    return a_ab
-
-
-def compute_pair_interactions(
-    adata: AnnData,
-    phenotype_column: str,
-    phenotype_A: str,
-    phenotype_B: str,
-    method: Literal["nodes", "edges"],
-    adjacency_matrix: np.ndarray | scipy.sparse.csr.csr_matrix = None,
-    connectivity_key: str = "spatial_connectivities",
-) -> tuple[int, int, bool]:
-    """
-    Uses adjacency_matrix first if supplied, otherwise tries to find
-    adjacency matrix in adata.obsp using `connectivity_key`.
-
-    Compute the number of interactions between two phenotypes in a graph.
-    Enforced symmetric relations. i.e.) IF A -> B, then B -> A.
-
-    If neighbors graph constructed with radius, then already symmetric.
-
-    Returns:
-    total_interactions: Number of interactions between phenotype_pair
-    total_cells: Total number of cells in the graph
-    missing: True if not enough cells for comparison
-    """
-    adata = adata.copy()
-    adata.obs = adata.obs.reset_index()
-    if adjacency_matrix is None:
-        if connectivity_key not in adata.obsp:
-            raise ValueError(
-                "No adjacency matrix provided and no "
-                "connectivity key found in adata.obsp"
+        if cell_population_b is None:
+            raise AttributeError(
+                "Need a second cell population for GCross metrics."
             )
-        else:
-            adjacency_matrix = adata.obsp[connectivity_key]
 
-    sym = symmetrise_graph(adjacency_matrix)
-    a_ix = list(
-        adata.obs[adata.obs[phenotype_column] == phenotype_A].index.astype(int)
-    )
-    b_ix = list(
-        adata.obs[adata.obs[phenotype_column] == phenotype_B].index.astype(int)
-    )
-    ab = sym[np.ix_(a_ix, b_ix)]  # A rows -> B cols
-    ba = sym[np.ix_(b_ix, a_ix)]  # B rows -> A cols
+        def _retrieve_compartment(label):
+            if "@" in label:
+                return label.split("@")[-1]
+            else:
+                return None
 
-    total_cells = sum(ab.shape)
+        compartment_a = _retrieve_compartment(cell_population_a)
+        compartment_b = _retrieve_compartment(cell_population_b)
 
-    # Count the number of nodes of pair A and B that neighbor each other / totals
-    if method == "nodes":
-        if isinstance(adjacency_matrix, np.ndarray):
-            f_sum = ab.any(
-                axis=1
-            ).sum()  # How many A cells have atleast 1 B neighbor
-            s_sum = ba.any(
-                axis=1
-            ).sum()  # How many B cells have atleast 1 A neighbor
+        if (compartment_a is None) != (compartment_b is None):
+            raise ValueError(
+                "Cannot compare global populations to compartmental"
+                "populations"
+            )
+        return self._obj
 
-        elif isinstance(adjacency_matrix, csr_matrix):
-            f_sum = (ab.getnnz(axis=1) > 0).sum()
-            s_sum = (ba.getnnz(axis=1) > 0).sum()
+    def plot(self):
+        self._obj.spatial_metric.plot()
 
-        else:
-            raise ValueError("invalid adjacency matrix type")
+    def pretty_print(self):
+        self._obj.spatial_metric.pretty_print()
 
-        total_interactions = (
-            f_sum + s_sum
-        )  # Represents total number of interacting cells in A and B
+    def query(self):
+        pass
 
-    # Count the number of times pair A and B neighbor each other / totals
-    elif method == "edges":
-        f_sum = (
-            ab.sum()
-        )  # How many B neighbors every A cells have in the graph
-        s_sum = (
-            ba.sum()
-        )  # How many A neighbors every B cells have in the graph
+    def test(self, adata):
+        """Test if GCross curve is beyond some homogenous process."""
+        indices = self._obj.sample_id  # noqa: F841
+        # convex hull;
+        # estimate lambda / density
+        # theoretical G under given Xs / radii
+        # Test observed G vs theoretical G
 
-        total_interactions = (
-            f_sum + s_sum
-        )  # Represents total number of interactions between A and B
 
-    else:
-        raise ValueError("invalid method")
+def create_proximity_density_metric(
+    values: np.ndarray,
+    cell_population_a: CellEntity,
+    cell_population_b: CellEntity,
+    sample_id: str,
+    parameters: dict[str, Any] | None = None,
+) -> xr.DataArray:
+    """
+    Create a proximity density result DataArray.
 
-    # Account for self comparisons. Normalised by density, but need to report counts
-    if phenotype_A == phenotype_B:
-        total_interactions = total_interactions / 2
-        total_cells = total_cells / 2
+    Args:
 
-    # # Minimum number of cells for a comparison
-    not_enough_cells = total_cells < 2
-    # For different phenotypes. If self, then not_enough_cells will be 0 anyway
-    not_enough_of_category = len(a_ix) == 0 or len(b_ix) == 0
-
-    missing = False
-    if not_enough_cells or not_enough_of_category:
-        missing = True
-
-    return total_interactions, total_cells, missing
+    """
 
 
 def proximity_density(
     adata: AnnData,
     grouping: str,
     phenotype: str,
-    pairs: list[tuple[str, str]] = None,
+    pairs: list[tuple[str, str]] | None = None,
     connectivity_key: str = "spatial_connectivities",
     multi_index: bool = False,
     inplace: bool = True,
