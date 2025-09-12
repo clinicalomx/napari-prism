@@ -13,8 +13,10 @@ from qtpy.QtWidgets import QTabWidget
 
 from napari_prism.constants import DEFAULT_DIVERGENT_CMAP
 from napari_prism.models.adata_ops.feature_modelling.obs import ObsAggregator
-from napari_prism.models.adata_ops.spatial_analysis.cell_level import (
+from napari_prism.models.adata_ops.spatial_analysis.neighborhoods.nolan import (
     cellular_neighborhoods_sq,
+)
+from napari_prism.models.adata_ops.spatial_analysis.pairwise.scimap import (
     proximity_density,
 )
 from napari_prism.widgets._widget_utils import RangeEditInt

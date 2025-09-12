@@ -9,10 +9,12 @@ import xarray as xr
 from anndata import AnnData
 from joblib import Parallel, delayed
 
+from napari_prism.models.adata_ops.schema import (
+    CellEntity,
+)
 from napari_prism.models.adata_ops.spatial_analysis.graph import (
     compute_pair_interactions,
 )
-from napari_prism.models.adata_ops.spatial_analysis.schema import CellEntity
 
 
 @xr.register_dataarray_accessor("proximity_density")

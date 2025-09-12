@@ -7,10 +7,10 @@ import xarray as xr
 from scipy.integrate import simpson
 from sklearn.neighbors import KernelDensity
 
-from napari_prism.models.adata_ops.spatial_analysis.schema import (
+from napari_prism.models.adata_ops.schema import (
     CellEntity,
     CompartmentEntity,
-    create_spatial_metric,
+    create_metric,
 )
 
 
@@ -23,7 +23,7 @@ class JSDMetricAccessor:
         """
         Validate the JSD metric object.
         """
-        self._obj.spatial_metric.validate()
+        self._obj.metric.validate()
         cell_population_a = self._obj.coords.get("cell_population_a", None)
         cell_population_b = self._obj.coords.get("cell_population_b", None)
 
@@ -48,10 +48,10 @@ class JSDMetricAccessor:
         return self._obj
 
     def plot(self):
-        self._obj.spatial_metric.plot()
+        self._obj.metric.plot()
 
     def pretty_print(self):
-        self._obj.spatial_metric.pretty_print()
+        self._obj.metric.pretty_print()
 
 
 def create_jsd_metric(
@@ -59,6 +59,8 @@ def create_jsd_metric(
     cell_population_a: CellEntity,
     cell_population_b: CellEntity,
     sample_id: str,
+    cell_compartment_a: CompartmentEntity | None = None,
+    cell_compartment_b: CompartmentEntity | None = None,
     parameters: dict[str, Any] | None = None,
 ) -> xr.DataArray:
     """
@@ -71,13 +73,15 @@ def create_jsd_metric(
         sample_id: Sample identifier
         parameters: Additional parameters
     """
-    return create_spatial_metric(
+    return create_metric(
         values=values,
         sample_id=sample_id,
         dims=[],
         coords={},
         cell_population_a=cell_population_a,
+        cell_compartment_a=cell_compartment_a,
         cell_population_b=cell_population_b,
+        cell_compartment_b=cell_compartment_b,
         metric_name="jsd",
         directional=False,
         parameters=parameters,
@@ -350,13 +354,15 @@ def jsd(
             patient_id = str(patient_id)
             for ct_p, jsd_val in v.items():
                 a, b = ct_p
-                a_instance = CellEntity(a, cell_type_key, comp)
-                b_instance = CellEntity(b, cell_type_key, comp)
+                a_instance = CellEntity(a, cell_type_key)
+                b_instance = CellEntity(b, cell_type_key)
                 results.append(
                     create_jsd_metric(
                         values=np.array([jsd_val]),
                         cell_population_a=a_instance,
                         cell_population_b=b_instance,
+                        cell_compartment_a=comp,
+                        cell_compartment_b=comp,
                         sample_id=patient_id,
                         parameters={
                             "bandwidth": bandwidth,

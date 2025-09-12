@@ -4,6 +4,7 @@ from typing import Literal
 
 import dask.array as da
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -439,3 +440,63 @@ def cluster_scores(
 
     # Plot the cluster scores;
     sns.heatmap(cluster_scores, **kwargs)
+
+
+def plot_spatial_graph(
+    adata,
+    spatial_key="spatial",
+    connectivity_key="connectivities",
+    color=None,
+    node_size=20,
+    edge_color="gray",
+    alpha=0.7,
+    figsize=(6, 6),
+    cmap="tab20",
+    filter_subgraph_node_count=2,
+):
+    coords = adata.obsm[spatial_key]
+    G = nx.from_scipy_sparse_array(adata.obsp[connectivity_key])
+
+    # disconnected compoennts (only works if graph is radial)
+    if filter_subgraph_node_count > 0:
+        components = list(nx.connected_components(G))
+        for comp in components:
+            if len(comp) < filter_subgraph_node_count:
+                G.remove_nodes_from(comp)
+
+    # Only keep coordinates and colors for nodes in G
+    nodes = list(G.nodes)
+    pos = {i: coords[i] for i in nodes}
+
+    plt.figure(figsize=figsize)
+
+    if color is None:
+        nx.draw(
+            G, pos=pos, node_size=node_size, edge_color=edge_color, alpha=alpha
+        )
+    else:
+        categories = adata.obs[color].astype("category")
+        color_map = {cat: i for i, cat in enumerate(categories.cat.categories)}
+        node_colors = [color_map[categories.iloc[i]] for i in nodes]
+
+        nx.draw(
+            G,
+            pos=pos,
+            node_color=node_colors,
+            cmap=plt.get_cmap(cmap),
+            node_size=node_size,
+            edge_color=edge_color,
+            alpha=alpha,
+        )
+
+        # Add legend
+        for cat, idx in color_map.items():
+            plt.scatter(
+                [], [], c=[plt.get_cmap(cmap)(idx / len(color_map))], label=cat
+            )
+        plt.legend(
+            markerscale=1, loc="center right", bbox_to_anchor=(1.3, 0.5)
+        )
+
+    plt.axis("off")
+    plt.show()

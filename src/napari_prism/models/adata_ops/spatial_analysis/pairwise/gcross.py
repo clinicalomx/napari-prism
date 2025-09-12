@@ -14,13 +14,13 @@ import xarray as xr
 from scipy.spatial import ConvexHull
 from sklearn.neighbors import NearestNeighbors
 
-from napari_prism.models.adata_ops.spatial_analysis.graph import (
-    get_closest_neighbors,
-)
-from napari_prism.models.adata_ops.spatial_analysis.schema import (
+from napari_prism.models.adata_ops.schema import (
     CellEntity,
     CompartmentEntity,
-    create_spatial_metric,
+    create_metric,
+)
+from napari_prism.models.adata_ops.spatial_analysis.graph import (
+    get_closest_neighbors,
 )
 
 
@@ -35,7 +35,7 @@ class GCrossMetricAccessor:
         b) Enforce exclusively global vs global or compartment vs compartment
             comparisons.
         """
-        self._obj.spatial_metric.validate()
+        self._obj.metric.validate()
         assert "radius" in self._obj.coords
         cell_population_a = self._obj.coords.get("cell_population_a", None)
         cell_population_b = self._obj.coords.get("cell_population_b", None)
@@ -62,10 +62,10 @@ class GCrossMetricAccessor:
         return self._obj
 
     def plot(self):
-        self._obj.spatial_metric.plot()
+        self._obj.metric.plot()
 
     def pretty_print(self):
-        self._obj.spatial_metric.pretty_print()
+        self._obj.metric.pretty_print()
 
     def auc(self, save_original=False):
         da = self._obj.gcross.validate().copy()
@@ -139,6 +139,8 @@ def create_gcross_metric(
     cell_population_a: CellEntity,
     cell_population_b: CellEntity,
     sample_id: str,
+    cell_compartment_a: CompartmentEntity | None = None,
+    cell_compartment_b: CompartmentEntity | None = None,
     radii_units: str | None = None,
     parameters: dict[str, Any] | None = None,
 ) -> xr.DataArray:
@@ -154,7 +156,7 @@ def create_gcross_metric(
     """
     assert len(radii) == len(values), "Radii and values must have same length"
     # values = np.array(values).reshape(1, 1, 1, 1, -1)
-    return create_spatial_metric(
+    return create_metric(
         values=values,
         sample_id=sample_id,
         dims=["radius"],
@@ -164,7 +166,9 @@ def create_gcross_metric(
             )
         },
         cell_population_a=cell_population_a,
+        cell_compartment_a=cell_compartment_a,
         cell_population_b=cell_population_b,
+        cell_compartment_b=cell_compartment_b,
         metric_name="gcross",
         directional=True,
         parameters=parameters,
@@ -392,15 +396,17 @@ def gcross(
             patient_id = str(patient_id)
             for ct_p, res in v.items():
                 a, b = ct_p
-                a_instance = CellEntity(a, cell_type_key, q_comp)
-                b_instance = CellEntity(b, cell_type_key, t_comp)
+                a_instance = CellEntity(a, cell_type_key)
+                b_instance = CellEntity(b, cell_type_key)
                 xs, gc = res
                 results.append(
                     create_gcross_metric(
                         radii=xs,
                         values=gc,
                         cell_population_a=a_instance,
+                        cell_compartment_a=q_comp,
                         cell_population_b=b_instance,
+                        cell_compartment_b=t_comp,
                         sample_id=patient_id,
                         radii_units=spatial_units,
                         parameters={

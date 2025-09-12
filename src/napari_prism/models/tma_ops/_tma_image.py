@@ -2246,7 +2246,7 @@ class TMASegmenter(MultiScaleImageOperations):
             global_seg_mask,
             label_name,
             write_element=write_element,
-            dims=("x", "y"),
+            dims=("x", "y"),  # TODO: should be reading parent image axes;
             transformations={"global": transformation_sequence},
             # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
         )

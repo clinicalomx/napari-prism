@@ -22,7 +22,8 @@ class GraphWrapper:
     csr: sp.csr_matrix | None = field(default=None)
     dense: np.ndarray | None = field(default=None)
     nx_graph: nx.Graph | None = field(default=None)
-    cugraph_graph: "cugraph.Graph" | None = field(default=None)  # type: ignore
+    # cugraph_graph: "cugraph.Graph" | None = field(default=None)  # type: ignore
+    cugraph_graph: None = field(default=None)
 
     # convert lazily
     def to_csr(self):
