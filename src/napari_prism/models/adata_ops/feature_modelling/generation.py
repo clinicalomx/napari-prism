@@ -1,10 +1,11 @@
 # Brute force all combinations of cell types x compartmentsde
 import anndata as ad
-import pandas as pd
+import numpy as np
 import xarray as xr
 
 from napari_prism.models.adata_ops.feature_modelling.obs import (
     cell_proportions,
+    get_sample_covariate,
 )
 from napari_prism.models.adata_ops.spatial_analysis.pairwise.gcross import (
     gcross,
@@ -70,7 +71,7 @@ def generate_all_proportional_features(
     sample_key: str,
     cell_type_key: str,
     compartment_key: str | None = None,
-    # misc_key: str | list[str] | None = None,  # other metadatas
+    misc_key: str | list[str] | None = None,  # other metadatas
     normalise_by_compartment: bool = False,
 ) -> xr.DataArray:
     proportions = cell_proportions(
@@ -84,30 +85,67 @@ def generate_all_proportional_features(
     return proportions
 
 
-def flatten_metric(da: xr.DataArray, sample_dim="sample_id") -> xr.DataArray:
+def add_covariate_to_dataset(
+    dataset: xr.Dataset,
+    adata: ad.AnnData,
+    sample_key: str,
+    covariate_key: str,
+) -> xr.Dataset:
+    """Add covariate from adata.obs to dataset as a variable.
+
+    Covariates are added as variables commonly indexed by sample_key to the
+    dataset, and can be used for stratification or adjustment in downstream
+    analyses.
+
+    Args:
+        dataset: xr.Dataset with sample_id dimension.
+        adata: AnnData with obs containing covariates.
+        sample_key: Key in adata.obs that matches dataset sample_id coord.
+        covariate_key: Key or list of keys in adata.obs to add as covariates.
+
+    Returns:
+        xr.Dataset with added covariate coords.
     """
-    Flatten any DataArray into shape (sample_id x feature)
-    while keeping metadata in a MultiIndex.
+    ys = get_sample_covariate(adata, sample_key, covariate_key)
+    ys.index.name = "sample_id"
+    dataset = dataset.copy()
+    dataset[covariate_key] = ys.to_xarray().set_coords(covariate_key)[
+        covariate_key
+    ]
+    return dataset
+
+
+def add_survival_covariate_to_dataset(
+    dataset: xr.Dataset,
+    adata: ad.AnnData,
+    sample_key: str,
+    event_key: str,
+    time_key: str,
+    survival_key_added: str = "Survival",
+) -> xr.Dataset:
+    """Add survival covariate from adata.obs to dataset as a variable.
+
+    Survival covariates are added as variables commonly indexed by sample_key
+    to the dataset, and can be used for stratification or adjustment in
+    downstream analyses.
+
+    Args:
+        dataset: xr.Dataset with sample_id dimension.
+        adata: AnnData with obs containing covariates.
+        sample_key: Key in adata.obs that matches dataset sample_id coord.
+        event_key: Key in adata.obs for event (boolean).
+        time_key: Key in adata.obs for time (numeric).
+
+    Returns:
+        xr.Dataset with added survival covariate coords.
     """
-    # Identify non-sample dimensions
-    feature_dims = [d for d in da.dims if d != sample_dim]
-
-    if len(feature_dims) == 0:
-        # Already 1D per sample
-        da_flat = da.rename({da.dims[0]: "feature"})
-        da_flat = da_flat.expand_dims("feature")
-        da_flat = da_flat.assign_coords(feature=[da.name or "value"])
-        return da_flat.transpose(sample_dim, "feature")
-
-    # Stack all non-sample dims into 'feature'
-    da_flat = da.stack(feature=feature_dims)
-
-    # Build MultiIndex for metadata
-    feature_index = pd.MultiIndex.from_arrays(
-        [da_flat[dim].values for dim in feature_dims], names=feature_dims
+    os = get_sample_covariate(adata, sample_key, [event_key, time_key])
+    os.index.name = "sample_id"
+    os_data = np.stack([os[time_key].values, os[event_key].values], axis=1)
+    dataset = dataset.copy()
+    dataset[survival_key_added] = xr.DataArray(
+        os_data,
+        coords={"sample_id": os.index, "survival": ["time", "event"]},
+        dims=["sample_id", "survival"],
     )
-    da_flat = da_flat.assign_coords(feature=feature_index)
-
-    # Transpose to (sample_dim x feature)
-    da_flat = da_flat.transpose(sample_dim, "feature")
-    return da_flat
+    return dataset

@@ -1,5 +1,6 @@
 """Classes for generating sample-level AnnData objects."""
 
+import json
 from typing import Any, Literal
 
 import pandas as pd
@@ -513,7 +514,7 @@ class ObsAggregator:
         aggregation_function: Literal[
             "min", "max", "sum", "mean", "median", "first", "last"
         ],
-        categorical_column: str | list[str] = None,
+        categorical_column: str | list[str] | None = None,
     ):
         numerical_as_category_name = f"binned_{numerical_column_to_bin}"
         store_adata_obs = self.adata.obs.copy()
@@ -594,7 +595,11 @@ class ProportionMetricAccessor:
 
 
 def create_proportion_metric(
-    values: pd.DataFrame, parameters: dict[str, Any] | None = None
+    values: pd.DataFrame,
+    obs_column: str | None = None,
+    sample_id_column: str | None = None,
+    compartment_column: str | None = None,
+    parameters: dict[str, Any] | None = None,
 ) -> xr.DataArray:
     """
     Create a ProportionMetric as a DataArray with common metadata.
@@ -606,8 +611,10 @@ def create_proportion_metric(
 
     """
     df = values.copy()
-    sample_id_key = None
-    compartment_key = None
+    POPA = "cell_population_a"
+    COMPA = "cell_compartment_a"
+    POPB = "cell_population_b"
+    COMPB = "cell_compartment_b"
     if len(df.columns.names) == 2:
         df_long = df.stack(level=[0]).reset_index()
         meta_cols = df_long.columns[:2]
@@ -619,8 +626,8 @@ def create_proportion_metric(
         static_dims = [
             "sample_id",
             "metric_name",
-            "cell_compartment_a",
-            "cell_population_a",
+            COMPA,
+            POPA,
         ]
         sample_id_key, _, compartment_key = meta_cols
     else:
@@ -630,16 +637,16 @@ def create_proportion_metric(
     df_ll = df_long.melt(
         id_vars=meta_cols,
         value_vars=ct_cols,
-        var_name="cell_population_a",
+        var_name=POPA,
         value_name="val",
     )
     df_ll.columns = static_dims + ["val"]
     df_ll["sample_id"] = df_ll["sample_id"].astype(str)
 
     appendable = [
-        "cell_compartment_a",
-        "cell_population_b",
-        "cell_compartment_b",
+        COMPA,
+        POPB,
+        COMPB,
     ]
     for a in appendable:
         if a not in df_ll.columns:
@@ -648,13 +655,32 @@ def create_proportion_metric(
     non_val = [c for c in df_ll.columns if c != "val"]
     da = df_ll.set_index(non_val)["val"].to_xarray()
 
-    if sample_id_key:
-        da["sample_id"].attrs["original_key"] = sample_id_key
+    if sample_id_column:
+        da["sample_id"].attrs["original_key"] = sample_id_column
 
-    if compartment_key:
-        da["cell_compartment_a"].attrs["original_key"] = compartment_key
+    if compartment_column:
+        da[COMPA].attrs["compartment_column"] = compartment_column
 
-    return da.proportion.validate()
+    if obs_column:
+        da[POPA].attrs["cell_type_column"] = obs_column
+
+    da = da.proportion.validate()
+
+    # Add parameters as DataArray aligned with metric_name dimension
+    if parameters:
+        parameters_da = xr.DataArray(
+            [json.dumps(parameters)],
+            dims="metric_name",
+            coords={"metric_name": da.metric_name.values},
+            name="parameters",
+        )
+        # Convert to Dataset to add parameters, then back to DataArray
+        ds = da.to_dataset(name="metric_values")
+        ds = ds.assign(parameters=parameters_da)
+        da = ds.metric_values
+        da.attrs.update(ds.attrs)
+
+    return da
 
 
 def cell_proportions(
@@ -701,6 +727,9 @@ def cell_proportions(
     if as_xarray:
         return create_proportion_metric(
             proportions,
+            obs_column=obs_column,
+            sample_id_column=sample_key,
+            compartment_column=compartment_column,
             parameters={
                 "normalised_by_compartment": (
                     compartment_column if normalise_by_compartment else None
@@ -711,7 +740,46 @@ def cell_proportions(
         return proportions
 
 
-# deprecate below
+def get_sample_covariate(
+    adata: AnnData,
+    sample_column: str,
+    covariate_column: str | list[str],
+):
+    """
+    Generate a sample-level xarray DataArray from a cell-level AnnData object,
+    with the given covariate(s) stored as coordinates.
+    """
+    sample_agg = ObsAggregator(adata, sample_column)
+
+    if isinstance(covariate_column, str):
+        if covariate_column not in sample_agg.parallel_keys:
+            raise ValueError(
+                f"Covariate column {covariate_column} is not a valid parallel key"
+            )
+        else:
+            df = sample_agg.get_metadata_df(covariate_column)
+    elif isinstance(covariate_column, list):
+        if any(
+            c for c in covariate_column if c not in sample_agg.parallel_keys
+        ):
+            raise ValueError(
+                "One or more covariate columns are not valid parallel keys"
+            )
+        else:
+            dfs = []
+            for c in covariate_column:
+                dfs.append(sample_agg.get_metadata_df(c))
+            df = pd.concat(dfs, axis=1)
+
+    else:
+        raise ValueError(
+            "covariate_column must be a string or list of strings"
+        )
+
+    df.index = df.index.astype(str)
+    return df
+
+
 def generate_sample_level_adata(
     adata: AnnData,
     sample_column: str,
@@ -769,11 +837,14 @@ def generate_sample_level_adata(
     for p in sample_agg.parallel_keys:
         parallel_dfs.append(sample_agg.get_metadata_df(p))
     parallel_df = pd.concat(parallel_dfs, axis=1)
+    parallel_df.index = parallel_df.index.astype(str)
 
     if aggregations:
         feature_column_obsm_label = f"{feature_column}_proportion"
     else:
         feature_column_obsm_label = feature_column
+
+    metadata_df.index = metadata_df.index.astype(str)
 
     return AnnData(
         obs=parallel_df,

@@ -143,6 +143,7 @@ def create_gcross_metric(
     cell_compartment_b: CompartmentEntity | None = None,
     radii_units: str | None = None,
     parameters: dict[str, Any] | None = None,
+    sample_id_key: str | None = None,
 ) -> xr.DataArray:
     """
     Create a GCross metric as a DataArray.
@@ -159,6 +160,7 @@ def create_gcross_metric(
     return create_metric(
         values=values,
         sample_id=sample_id,
+        sample_id_key=sample_id_key,
         dims=["radius"],
         coords={
             "radius": xr.Variable(
@@ -408,6 +410,7 @@ def gcross(
                         cell_population_b=b_instance,
                         cell_compartment_b=t_comp,
                         sample_id=patient_id,
+                        sample_id_key=sample_key,
                         radii_units=spatial_units,
                         parameters={
                             "correction": correction,

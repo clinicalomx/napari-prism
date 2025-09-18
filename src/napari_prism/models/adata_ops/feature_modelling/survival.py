@@ -16,6 +16,46 @@ from sksurv.util import Surv
 from napari_prism.models.adata_ops.feature_modelling.obs import ObsAggregator
 
 
+def catch_fit_errors(method):
+    def wrapper(self, X, y, *args, **kwargs):
+        try:
+            result = method(self, X, y, *args, **kwargs)
+            self.failed_ = False
+            return result
+        except Exception as e:  # noqa: BLE001
+            self.failed_ = True
+            self.error_ = str(e)
+            self.coef_ = np.zeros(X.shape[1], dtype=np.float32)
+            return self
+
+    return wrapper
+
+
+class CoxnetFitter(CoxnetSurvivalAnalysis):
+    def __init__(
+        self, l1_ratio=0.5, alphas=None, max_iter=5000000, tol=1e-6, **kwargs
+    ):
+        if alphas is None:
+            alphas = [0.1]
+        super().__init__(
+            l1_ratio=l1_ratio,
+            alphas=alphas,
+            max_iter=max_iter,
+            tol=tol,
+            **kwargs,
+        )
+        self.failed_ = False
+        self.error_ = None
+
+    @catch_fit_errors
+    def fit(self, X, y):
+        # print("self.alpha: ", self.alphas)
+        super().fit(X, y)
+        self.failed_ = False
+        self.coef_ = self.coef_.ravel()
+        return self
+
+
 def get_sample_level_adata(
     adata: AnnData,
     sample_column: str,

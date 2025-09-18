@@ -62,6 +62,7 @@ def create_jsd_metric(
     cell_compartment_a: CompartmentEntity | None = None,
     cell_compartment_b: CompartmentEntity | None = None,
     parameters: dict[str, Any] | None = None,
+    sample_id_key: str | None = None,
 ) -> xr.DataArray:
     """
     Create a JSD metric as a DataArray.
@@ -76,6 +77,7 @@ def create_jsd_metric(
     return create_metric(
         values=values,
         sample_id=sample_id,
+        sample_id_key=sample_id_key,
         dims=[],
         coords={},
         cell_population_a=cell_population_a,
@@ -364,6 +366,7 @@ def jsd(
                         cell_compartment_a=comp,
                         cell_compartment_b=comp,
                         sample_id=patient_id,
+                        sample_id_key=sample_key,
                         parameters={
                             "bandwidth": bandwidth,
                             "minimum_cell_count": minimum_cell_count,
