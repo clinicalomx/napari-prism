@@ -139,6 +139,10 @@ def add_survival_covariate_to_dataset(
     Returns:
         xr.Dataset with added survival covariate coords.
     """
+    # check if it has an original key
+    if sample_key not in adata.obs and (
+        "original_key" in dataset["sample_id"].attrs):
+        sample_key = dataset["sample_id"].attrs["original_key"]
     os = get_sample_covariate(adata, sample_key, [event_key, time_key])
     os.index.name = "sample_id"
     os_data = np.stack([os[time_key].values, os[event_key].values], axis=1)

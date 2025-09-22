@@ -229,21 +229,17 @@ def create_metric(
     # da = da.expand_dims(metric_name=[metric_name])
 
     if "metric_name" not in da.dims:
-        # create metric_name dimension as singleton
-        da = da.expand_dims(metric_name=[metric_name])
-        da = da.assign_coords(
-            parameters=("metric_name", [json.dumps(full_params)])
-        )
-    else:
-        # metric_name already exists; assume it has length 1
-        da = da.assign_coords(
-            parameters=("metric_name", [json.dumps(full_params)])
-        )
+        da = da.expand_dims({"metric_name": [metric_name]})
+
+    da = da.assign_coords(
+        metric_name=("metric_name", [metric_name]),
+    )
+
+    da.coords["metric_name"].attrs[f"{metric_name}_parameters"] = json.dumps(
+        full_params)
 
     da = da.metric.validate()
-    # TODO:
     return da
-
 
 def xarray_to_anndata(
     data: xr.DataArray | xr.Dataset, sample_id_dim: str = "sample_id"

@@ -156,7 +156,6 @@ def stabl_survival_pipeline(
         d = stabl_obj.fitted_lambda_grid_
         d["alpha"] = d.pop("alphas")
 
-    assert sample_key in feature_dataset.dims
     assert train_size < 1.0
 
     flat_data = flatten_metric_flatcoords(

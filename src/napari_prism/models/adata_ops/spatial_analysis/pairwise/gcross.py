@@ -85,6 +85,14 @@ class GCrossMetricAccessor:
         )
 
         auc_values = auc_values.assign_coords(metric_name=["gcross_auc"])
+
+        auc_values = auc_values.assign_coords(metric_name=["gcross_auc"])
+
+        if "gcross_parameters" in da.coords["metric_name"].attrs:
+            auc_values.coords["metric_name"].attrs["gcross_parameters"] = (
+                da.coords["metric_name"].attrs["gcross_parameters"]
+            )
+
         return auc_values
 
     def query(self):
