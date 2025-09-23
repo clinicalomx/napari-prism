@@ -18,6 +18,8 @@ from stabl.stabl import Stabl
 from napari_prism.models.adata_ops.feature_modelling.generation import (
     add_survival_covariate_to_dataset,
 )
+# TODO: Fix package structure for faster imports
+# TODO: Stabl spawn parallel processes, so re-imports Coxnetfitter each time
 from napari_prism.models.adata_ops.feature_modelling.survival import (
     CoxnetFitter,
 )
@@ -151,6 +153,7 @@ def stabl_survival_pipeline(
     train_size: float = 0.8,
     n_bootstraps: int = 200,
     alpha_grid: list[float] | None = None,
+    n_jobs: int = 8,
 ):
     def patch_attributes(stabl_obj: PatchedStabl):
         d = stabl_obj.fitted_lambda_grid_
@@ -197,7 +200,7 @@ def stabl_survival_pipeline(
         sample_fraction=0.65,  # subsampling fraction
         random_state=42,
         verbose=30,
-        n_jobs=30,
+        n_jobs=n_jobs,
     )
 
     stabl_survival_pipeline = Pipeline(

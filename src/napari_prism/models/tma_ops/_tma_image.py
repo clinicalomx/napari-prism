@@ -7,7 +7,6 @@ from threading import Lock
 from typing import Any, Literal
 
 import anndata as ad
-import cellpose.version
 import geopandas
 import geopandas as gpd
 import numpy as np
@@ -17,7 +16,6 @@ import skimage
 import torch
 import xarray as xr
 from anndata import AnnData
-from cellpose import core, denoise, models
 from dask.array import Array
 from geopandas import GeoDataFrame
 from loguru import logger
@@ -1844,6 +1842,9 @@ class TMASegmenter(MultiScaleImageOperations):
         Returns:
             Dictionary of the segmentation results and metadata
         """
+        import cellpose.version
+        from cellpose import core, denoise, models
+
         device = None
         # sentinel values for diameter
         if nuclei_diam_um is not None:
