@@ -236,10 +236,12 @@ def create_metric(
     )
 
     da.coords["metric_name"].attrs[f"{metric_name}_parameters"] = json.dumps(
-        full_params)
+        full_params
+    )
 
     da = da.metric.validate()
     return da
+
 
 def xarray_to_anndata(
     data: xr.DataArray | xr.Dataset, sample_id_dim: str = "sample_id"
@@ -510,3 +512,85 @@ def anndata_to_xarray(
     da.attrs.update(attrs)
 
     return da
+
+
+def flatten_metric_flatcoords(
+    da: xr.DataArray, sample_dim="sample_id"
+) -> xr.DataArray:
+    """
+    Flatten any DataArray into shape (sample_id x feature)
+    while keeping metadata encoded in string feature names,
+    instead of a MultiIndex (for sklearn compatibility).
+    """
+    # Identify non-sample dimensions
+    feature_dims = [d for d in da.dims if d != sample_dim]
+    if len(feature_dims) == 0:
+        # Already 1D per sample
+        da_flat = da.rename({da.dims[0]: "feature"})
+        da_flat = da_flat.expand_dims("feature")
+        da_flat = da_flat.assign_coords(feature=[da.name or "value"])
+        return da_flat.transpose(sample_dim, "feature")
+
+    # Stack all non-sample dims into 'feature'
+    da_flat = da.stack(feature=feature_dims)
+
+    # Build flat string labels
+    labels = [
+        "|".join(str(x) for x in vals)
+        for vals in zip(
+            *[da_flat[dim].values for dim in feature_dims], strict=False
+        )
+    ]
+
+    da_flat = da_flat.assign_coords(feature=labels)
+
+    # Drop the original index dims (since we encoded them in labels)
+    da_flat = da_flat.drop_vars(feature_dims, errors="ignore")
+
+    # Transpose to (sample_dim x feature)
+    da_flat = da_flat.transpose(sample_dim, "feature")
+    return da_flat
+
+
+def grow_feature_hypercube(dataarrays, keep_order="first"):
+    """
+    Util function to combine iteratively grow the DataArray hypercubes. Useful
+    for growing the feature database dynamically. If new feature introduces
+    new dim (i.e. new cell type in population_b), then existing data has NaNs
+    for those.
+    """
+    if not dataarrays:
+        raise ValueError("No DataArrays provided.")
+
+    # 1) collect all dims
+    all_dims = set().union(*[da.dims for da in dataarrays])
+    unions = {}
+
+    # 2) compute global union of coordinates for each dimension
+    for dim in all_dims:
+        coords = [
+            np.asarray(da[dim].values) for da in dataarrays if dim in da.dims
+        ]
+        all_coords = np.concatenate(coords)
+        if keep_order == "first":
+            _, idx = np.unique(all_coords, return_index=True)
+            union = all_coords[np.sort(idx)]
+        elif keep_order == "sorted":
+            union = np.unique(all_coords)
+        else:
+            raise ValueError("keep_order must be 'first' or 'sorted'")
+        unions[dim] = union
+
+    # 3) reindex each DataArray to global union
+    reindexed = []
+    for da in dataarrays:
+        da = da.assign_coords({dim: da[dim].values for dim in da.dims})
+        da = da.reindex({dim: unions[dim] for dim in da.dims})
+        reindexed.append(da)
+
+    # Use concat along a temporary dummy dimension, then remove it
+    combined = xr.concat(reindexed, dim="_tmp_dim").mean(
+        dim="_tmp_dim", skipna=True
+    )
+
+    return combined

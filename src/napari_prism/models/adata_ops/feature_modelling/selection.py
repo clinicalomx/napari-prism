@@ -8,16 +8,25 @@ from IPython.display import display_html
 from sklearn.base import BaseEstimator, clone
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import LabelBinarizer, StandardScaler
 from sklearn.utils.validation import validate_data
 from sksurv.util import Surv
+from stabl.adaptive import ALogitLasso
 from stabl.preprocessing import LowInfoFilter
-from stabl.stabl import Stabl
+from stabl.stabl import Stabl, plot_fdr_graph, plot_stabl_path
+from stabl.visualization import (
+    boxplot_binary_predictions,
+    boxplot_features,
+    plot_roc,
+)
 
 from napari_prism.models.adata_ops.feature_modelling.generation import (
+    add_covariate_to_dataset,
     add_survival_covariate_to_dataset,
 )
+
 # TODO: Fix package structure for faster imports
 # TODO: Stabl spawn parallel processes, so re-imports Coxnetfitter each time
 from napari_prism.models.adata_ops.feature_modelling.survival import (
@@ -26,7 +35,15 @@ from napari_prism.models.adata_ops.feature_modelling.survival import (
 
 
 class PatchedLowInfoFilter(LowInfoFilter):  # For sklearn 1.7.0
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        tags.input_tags.allow_nan = True
+        return tags
+
     def _validate_data(self, *args, **kwargs):
+        if "force_all_finite" in kwargs:
+            kwargs.pop("force_all_finite")
+        kwargs.setdefault("ensure_all_finite", "allow-nan")
         return validate_data(self, *args, **kwargs)
 
 
@@ -204,7 +221,10 @@ def stabl_survival_pipeline(
     )
 
     stabl_survival_pipeline = Pipeline(
-        steps=processing_pipeline.steps + [("stabl_survival", stabl)],
+        steps=[
+            ("preprocessing", processing_pipeline),
+            ("stabl_cox", stabl),
+        ],
         verbose=True,
     )
 
@@ -261,5 +281,117 @@ def stabl_survival_pipeline(
     return final_estimator, X_test, y_test, final_feature_indices, results
 
 
-def stabl_binary():
-    pass
+def stabl_discrete_pipeline(
+    feature_dataset: xr.Dataset,
+    adata: ad.AnnData,
+    discrete_key: str,
+    base_estimator: BaseEstimator | None = None,
+    sample_key: str = "sample_id",
+    processing_pipeline: Pipeline | None = None,
+    train_size: float = 0.8,
+    n_bootstraps: int = 200,
+    n_lambda: int = 10,
+    lambda_grid: list[float] | None = None,
+    n_jobs: int = 8,
+):
+    RANDSTATE = 42
+
+    assert train_size < 1.0
+    flat_data = flatten_metric_flatcoords(
+        feature_dataset, sample_dim="sample_id"
+    )
+
+    flat_data = add_covariate_to_dataset(
+        flat_data,
+        adata,
+        sample_key,
+        discrete_key,
+    )
+
+    # Drop features that are completely NaN
+    flat_data = flat_data.dropna(dim="feature", how="all")
+    # Drop samples that are NAN survival data (censorship should be 0 not NaN)
+    flat_data = flat_data.where(flat_data[discrete_key].notnull())
+
+    if processing_pipeline is None:
+        processing_pipeline = default_processing_pipeline()
+
+    if base_estimator is None:
+        base_estimator = ALogitLasso(
+            penalty="l1",
+            max_iter=int(1e6),
+            solver="liblinear",
+            class_weight="balanced",
+            random_state=RANDSTATE,
+        )
+
+    if lambda_grid is None:
+        lambda_grid = "auto"
+
+    stabl = PatchedStabl(
+        base_estimator=base_estimator,
+        lambda_grid=lambda_grid,
+        n_lambda=n_lambda,
+        n_bootstraps=n_bootstraps,
+        artificial_type="knockoff",
+        artificial_proportion=1.0,  # 1:1 spikeins.
+        random_state=RANDSTATE,
+        verbose=30,
+        n_jobs=n_jobs,
+    )
+
+    stabl_discrete_pipeline = Pipeline(
+        steps=[
+            ("preprocessing", processing_pipeline),
+            ("stabl_alasso", stabl),
+            ("final_logreg", LogisticRegression()),
+        ]
+    )
+
+    # if display
+    X = flat_data["features"]
+    y = flat_data[discrete_key]
+
+    # Train test split by indices
+    train_indices = np.random.choice(
+        np.arange(len(X.sample_id)),
+        size=int(len(X.sample_id) * train_size),
+        replace=False,
+    )
+    test_indices = np.setdiff1d(np.arange(len(X.sample_id)), train_indices)
+
+    X_train = X.isel(sample_id=train_indices)
+    X_test = X.isel(sample_id=test_indices)
+    y_test = y.isel(sample_id=test_indices)
+    y_train = y.isel(sample_id=train_indices)
+
+    lb = LabelBinarizer()
+    y_train = lb.fit_transform(y_train).ravel()
+    y_test = lb.fit_transform(y_test).ravel()
+    print(lb.classes_)
+
+    # Execute;
+    display_html(stabl_survival_pipeline)
+    results = stabl_discrete_pipeline.fit(X_train, y_train)
+    final_feature_indices = traverse_pipeline_graph(results[:-1])
+    final_features = X.isel(feature=final_feature_indices).feature
+
+    # Assess Training
+    plot_fdr_graph(results[-2], figsize=(10, 8))
+    plot_stabl_path(results[-2], figsize=(10, 8))
+    plot_roc(y_train, results.predict_proba(X_train)[:, 1])
+    boxplot_binary_predictions(y_train, results.predict_proba(X_train)[:, 1])
+
+    # Assess performance on test
+    plot_roc(y_test, results.predict_proba(X_test)[:, 1])
+    boxplot_binary_predictions(y_test, results.predict_proba(X_test)[:, 1])
+
+    # EDA
+    print(final_features.data.tolist())
+    boxplot_features(
+        final_features.data.tolist(),
+        X_train.to_pandas(),
+        y_train,
+    )
+
+    return results

@@ -106,12 +106,15 @@ def add_covariate_to_dataset(
     Returns:
         xr.Dataset with added covariate coords.
     """
+    original_dim_order = tuple(dataset.dims.keys())
     ys = get_sample_covariate(adata, sample_key, covariate_key)
     ys.index.name = "sample_id"
     dataset = dataset.copy()
     dataset[covariate_key] = ys.to_xarray().set_coords(covariate_key)[
         covariate_key
     ]
+    dataset[covariate_key] = dataset[covariate_key].astype(str)
+    dataset = dataset.transpose(*original_dim_order, ...)
     return dataset
 
 
@@ -141,7 +144,8 @@ def add_survival_covariate_to_dataset(
     """
     # check if it has an original key
     if sample_key not in adata.obs and (
-        "original_key" in dataset["sample_id"].attrs):
+        "original_key" in dataset["sample_id"].attrs
+    ):
         sample_key = dataset["sample_id"].attrs["original_key"]
     os = get_sample_covariate(adata, sample_key, [event_key, time_key])
     os.index.name = "sample_id"

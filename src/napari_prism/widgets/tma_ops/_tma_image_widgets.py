@@ -803,7 +803,7 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
         rows = len(final_grid_labels)
         cols = len(final_grid_labels[0])
         row_labels = tuple([f"{chr(65 + i)}" for i in range(rows)])
-        col_labels = tuple([f"{i+1}" for i in range(cols)])
+        col_labels = tuple([f"{i + 1}" for i in range(cols)])
 
         grid = Table(final_grid_labels, name="Grid")
         grid.row_headers = row_labels
@@ -1305,10 +1305,17 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         worker.finished.connect(self.refresh_sdata_widget)
 
     def add_segmentation_layer(self, out):
+        import cellpose.version
+        from packaging import version
+
+        is_cpsam = version.parse(cellpose.version) >= version.parse("4")
         global_seg_mask, transformation_sequence = out
-        affine = transformation_sequence.to_affine_matrix(
-            ("y", "x"), ("x", "y")
-        )
+        if not is_cpsam:
+            affine = transformation_sequence.to_affine_matrix(
+                ("y", "x"), ("x", "y")
+            )
+        else:
+            affine = None
         parent_layer = self.viewer.layers.selection.active
 
         global_seg_mask = xr.DataArray(
