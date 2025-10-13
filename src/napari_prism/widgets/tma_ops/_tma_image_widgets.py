@@ -803,7 +803,7 @@ class TMADearrayerNapariWidget(SingleScaleImageNapariWidget):
         rows = len(final_grid_labels)
         cols = len(final_grid_labels[0])
         row_labels = tuple([f"{chr(65 + i)}" for i in range(rows)])
-        col_labels = tuple([f"{i+1}" for i in range(cols)])
+        col_labels = tuple([f"{i + 1}" for i in range(cols)])
 
         grid = Table(final_grid_labels, name="Grid")
         grid.row_headers = row_labels

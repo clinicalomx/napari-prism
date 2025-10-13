@@ -230,7 +230,7 @@ class SdataImageOperations:
             raise ValueError("Invalid method for multichannel projection")
 
         # Add the c dim back for logging of what the slice represents
-        c_name = f'{method}[{"_".join(channels)}]'  # + "_" + method
+        c_name = f"{method}[{'_'.join(channels)}]"  # + "_" + method
         # Keep the c dim as a scalar
         compacted = compacted.expand_dims(c=[1])
         compacted = compacted.assign_coords(c=[c_name])
