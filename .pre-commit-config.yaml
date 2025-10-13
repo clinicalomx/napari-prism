@@ -15,7 +15,7 @@ repos:
   #   hooks:
   #     - id: pyproject-fmt
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.3
+    rev: v0.14.0
     hooks:
       - id: ruff
         types_or: [python, pyi, jupyter]
@@ -23,7 +23,7 @@ repos:
       - id: ruff-format
         types_or: [python, pyi, jupyter]
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: detect-private-key
       - id: check-ast
@@ -45,7 +45,7 @@ repos:
         language: fail
         files: '.*\.rej$'
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-docstring-first
       - id: end-of-file-fixer
@@ -55,11 +55,11 @@ repos:
 
   # from napari precommit configs
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.3
+    rev: v0.14.0
     hooks:
       - id: ruff
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 25.9.0
     hooks:
       - id: black
   - repo: https://github.com/tlambert03/napari-plugin-checks
