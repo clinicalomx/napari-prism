@@ -12,6 +12,7 @@ import seaborn as sns
 import skimage
 import xarray as xr
 from anndata import AnnData
+from matplotlib.cm import get_cmap
 from spatialdata import SpatialData
 from spatialdata.transformations import (
     get_transformation_between_coordinate_systems,
@@ -444,6 +445,8 @@ def cluster_scores(
 
 def plot_spatial_graph(
     adata,
+    sample_key=None,
+    sample_id=None,
     spatial_key="spatial",
     connectivity_key="connectivities",
     color=None,
@@ -453,50 +456,176 @@ def plot_spatial_graph(
     figsize=(6, 6),
     cmap="tab20",
     filter_subgraph_node_count=2,
+    vmin=None,
+    vmax=None,
+    categorical=True,
+    color_specifics=None,  # NEW
+    show=True,
+    backend="matplotlib",
 ):
+    """
+    Plot a spatial neighbor graph from AnnData using networkx.
+    """
+    if sample_key and sample_id:
+        adata = adata[adata.obs[sample_key] == sample_id]
+
+    CAT_THRESHOLD = 50
     coords = adata.obsm[spatial_key]
     G = nx.from_scipy_sparse_array(adata.obsp[connectivity_key])
 
-    # disconnected compoennts (only works if graph is radial)
+    # filter small disconnected components
     if filter_subgraph_node_count > 0:
         components = list(nx.connected_components(G))
         for comp in components:
             if len(comp) < filter_subgraph_node_count:
                 G.remove_nodes_from(comp)
 
-    # Only keep coordinates and colors for nodes in G
+    # Only keep coordinates for nodes in G
     nodes = list(G.nodes)
     pos = {i: coords[i] for i in nodes}
 
-    plt.figure(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize)
 
     if color is None:
         nx.draw(
-            G, pos=pos, node_size=node_size, edge_color=edge_color, alpha=alpha
-        )
-    else:
-        categories = adata.obs[color].astype("category")
-        color_map = {cat: i for i, cat in enumerate(categories.cat.categories)}
-        node_colors = [color_map[categories.iloc[i]] for i in nodes]
-
-        nx.draw(
             G,
             pos=pos,
-            node_color=node_colors,
-            cmap=plt.get_cmap(cmap),
             node_size=node_size,
             edge_color=edge_color,
             alpha=alpha,
+            ax=ax,
         )
+    else:
+        vals = adata.obs[color]
+        vals_ordered = vals.iloc[nodes]
 
-        # Add legend
-        for cat, idx in color_map.items():
-            plt.scatter(
-                [], [], c=[plt.get_cmap(cmap)(idx / len(color_map))], label=cat
+        # Check if user passed a dict as cmap
+        cmap_is_dict = isinstance(cmap, dict)
+        cmap_obj = None if cmap_is_dict else get_cmap(cmap)
+
+        # Detect numeric vs categorical
+        is_numeric = pd.api.types.is_numeric_dtype(vals_ordered)
+
+        # --- Continuous values ---
+        if (
+            (vals_ordered.nunique(dropna=True) > CAT_THRESHOLD)
+            or (not categorical)
+            or is_numeric
+        ):
+            finite_vals = vals_ordered.replace(
+                [np.inf, -np.inf], np.nan
+            ).dropna()
+            vmin_eff = finite_vals.min() if vmin is None else vmin
+            vmax_eff = finite_vals.max() if vmax is None else vmax
+            if vmin_eff > vmax_eff:
+                vmin_eff, vmax_eff = finite_vals.min(), finite_vals.max()
+
+            node_colors = vals_ordered.to_numpy()
+
+            nx.draw(
+                G,
+                pos=pos,
+                node_color=node_colors,
+                cmap=cmap_obj,
+                node_size=node_size,
+                edge_color=edge_color,
+                alpha=alpha,
+                vmin=vmin_eff,
+                vmax=vmax_eff,
+                ax=ax,
             )
-        plt.legend(
-            markerscale=1, loc="center right", bbox_to_anchor=(1.3, 0.5)
-        )
 
-    plt.axis("off")
-    plt.show()
+            sm = plt.cm.ScalarMappable(
+                cmap=cmap_obj, norm=plt.Normalize(vmin=vmin_eff, vmax=vmax_eff)
+            )
+            sm.set_array([])
+            fig.colorbar(sm, ax=ax, label=color)
+
+        # --- Categorical values ---
+        else:
+            categories = vals_ordered.astype("category")
+            cats = list(categories.cat.categories)
+
+            if cmap_is_dict:
+                # user-provided palette
+                cat2color = {cat: cmap[cat] for cat in cats if cat in cmap}
+                missing_color = (0.7, 0.7, 0.7, 1.0)
+            else:
+                # build palette from matplotlib colormap
+                xs = np.linspace(0, 1, num=max(len(cats), 2), endpoint=False)
+                palette = [cmap_obj(x) for x in xs[: len(cats)]]
+                cat2color = dict(zip(cats, palette, strict=False))
+                missing_color = (0.7, 0.7, 0.7, 1.0)
+
+            node_colors = []
+            node_sizes = []
+            node_alphas = []
+
+            if (color_specifics is not None) and all(
+                c in cats for c in color_specifics
+            ):
+                # Highlight only specified categories
+                for val in categories.to_numpy():
+                    if val in color_specifics:
+                        node_colors.append(cat2color.get(val, missing_color))
+                        node_sizes.append(node_size)
+                        node_alphas.append(alpha)
+                    else:
+                        node_colors.append(
+                            (0.85, 0.85, 0.85, 0.2)
+                        )  # transparent grey
+                        node_sizes.append(node_size * 0.01)
+                        node_alphas.append(0.2)
+            else:
+                # Normal coloring
+                node_colors = [
+                    cat2color.get(val, missing_color)
+                    for val in categories.to_numpy()
+                ]
+                node_sizes = [node_size] * len(node_colors)
+                node_alphas = [alpha] * len(node_colors)
+
+            nx.draw(
+                G,
+                pos=pos,
+                node_color=node_colors,
+                node_size=node_sizes,
+                edge_color=edge_color,
+                alpha=None,  # use per-node alpha
+                ax=ax,
+            )
+
+            # Legend: only show categories actually highlighted
+            legend_cats = (
+                color_specifics
+                if (
+                    color_specifics and all(c in cats for c in color_specifics)
+                )
+                else cats
+            )
+            handles = [
+                plt.Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    linestyle="",
+                    markersize=6,
+                    markerfacecolor=cat2color.get(cat, missing_color),
+                    markeredgecolor="none",
+                    label=str(cat),
+                )
+                for cat in legend_cats
+            ]
+            ax.legend(
+                handles=handles,
+                markerscale=1,
+                loc="center right",
+                bbox_to_anchor=(1.3, 0.5),
+            )
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+    if show:
+        plt.show()
+    else:
+        return fig

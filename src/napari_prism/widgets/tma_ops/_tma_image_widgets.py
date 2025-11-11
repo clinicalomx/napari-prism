@@ -12,7 +12,12 @@ from magicgui.widgets import ComboBox, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from numpy import dtype, ndarray
 from qtpy.QtWidgets import QAbstractItemView, QHBoxLayout
-from spatialdata.transformations import Scale, Translation, get_transformation
+from spatialdata.transformations import (
+    Identity,
+    Scale,
+    Translation,
+    get_transformation,
+)
 from xarray import DataArray
 
 from napari_prism.models.tma_ops._tma_image import (
@@ -1365,7 +1370,10 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
 
             data_sd = tiling_layer.metadata["sdata"].shapes[tiling_layer.name]
             data_sd = data_sd.copy()
-            transforms = get_transformation(data_sd).transformations
+            if isinstance(get_transformation(data_sd), Identity):
+                transforms = [get_transformation(data_sd)]
+            else:
+                transforms = get_transformation(data_sd).transformations
             # Scale must be supplied.?
             scale = [x for x in transforms if isinstance(x, Scale)][0].scale
             # Rescale data;

@@ -38,7 +38,9 @@ from spatialdata.transformations import (
     Scale,
     Sequence,
     Translation,
+    get_transformation,
     get_transformation_between_coordinate_systems,
+    set_transformation,
 )
 from xarray import DataArray, DataTree
 
@@ -158,6 +160,7 @@ class SdataImageOperations:
             self.sdata,
             "global",  # Px
             coordinate_system,
+            self.get_image(),  # as intermediate
         )
         scaling_factor_x = base_transformation.to_affine_matrix("x", "x")[0, 0]
         scaling_factor_y = base_transformation.to_affine_matrix("y", "y")[0, 0]
@@ -269,6 +272,30 @@ class SdataImageOperations:
         sdata[element_name] = element
         sdata.write_element(element_name, overwrite=True)
 
+    def add_cs_from_model_image(
+        self,
+        element,
+        query_cs="global",
+        target_cs="um",
+    ):
+        """Adds the target coordinate system using the transformation
+        of the given element to query, then appends and inherits this model's
+        parent image transformation of query to target.
+
+        i.e.) If `element` was derived from `parent`:
+            element -- TransformA ---> query
+            parent (query) -- TransformB ---> target
+            Then element --- TransformA ---> query ---> TransformB ---> target
+        """
+        element_to_query = get_transformation(
+            element, to_coordinate_system=query_cs
+        )
+        query_to_target = get_transformation_between_coordinate_systems(
+            self.sdata, query_cs, target_cs, self.get_image()
+        )
+        element_to_target = Sequence([element_to_query, query_to_target])
+        set_transformation(element, element_to_target, target_cs)
+
     def add_image(
         self,
         image: ndarray[Any, dtype[float64]] | DataArray | Array,
@@ -296,6 +323,17 @@ class SdataImageOperations:
                 "Spatialdata object is not stored on disk, could only add"
                 " element in memory."
             )
+
+        if "transformations" in kwargs:
+            transformations = kwargs["transformations"]
+            if "global" in transformations and "um" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[image_label], "global", "um"
+                )
+            elif "um" in transformations and "global" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[image_label], "um", "global"
+                )
 
     def add_label(
         self,
@@ -337,6 +375,16 @@ class SdataImageOperations:
                 "Spatialdata object is not stored on disk, could only add"
                 " element in memory."
             )
+        if "transformations" in kwargs:
+            transformations = kwargs["transformations"]
+            if "global" in transformations and "um" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[label_name], "global", "um"
+                )
+            elif "um" in transformations and "global" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[label_name], "um", "global"
+                )
 
     def add_shapes(
         self,
@@ -369,6 +417,16 @@ class SdataImageOperations:
                 "Spatialdata object is not stored on disk, could only add"
                 " element in memory."
             )
+        if "transformations" in kwargs:
+            transformations = kwargs["transformations"]
+            if "global" in transformations and "um" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[shapes_name], "global", "um"
+                )
+            elif "um" in transformations and "global" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[shapes_name], "um", "global"
+                )
 
     def _get_scaled_polygon(self, polygon, scale) -> Polygon:
         """Returns the polygons, but re-scaled to 'real' world measurements."""
@@ -946,7 +1004,9 @@ class TMAMasker(MultiScaleImageOperations):
             masks_gdf,
             f"{channel_label}_poly",
             write_element=write_element,
-            transformations={"global": transformation_sequence},
+            transformations={
+                self.reference_coordinate_system: transformation_sequence
+            },
         )
 
     def save_masks(
@@ -961,7 +1021,9 @@ class TMAMasker(MultiScaleImageOperations):
             f"{channel_label}",
             write_element=write_element,
             dims=("y", "x"),
-            transformations={"global": transformation_sequence},
+            transformations={
+                self.reference_coordinate_system: transformation_sequence
+            },
         )
 
     def _rasterize_tma_masks(
@@ -2334,7 +2396,8 @@ class TMAMeasurer(MultiScaleImageOperations):
                     properties=properties,
                 )
             elif intensity_mode == "median":
-                properties.remove("intensity_mean")
+                if "intensity_mean" in properties:
+                    properties.remove("intensity_mean")
                 label_props_table = skimage.measure.regionprops_table(
                     arr,  # DataArray + Dask -> np.array
                     intensity_image=intensity_image.data.compute(),
@@ -2343,12 +2406,13 @@ class TMAMeasurer(MultiScaleImageOperations):
                 )
             else:
                 raise ValueError("Unsupported intensity aggregation method.")
-
             label_props_table = pd.DataFrame(label_props_table)
             # Extract the intensities as expression data
             intensities = label_props_table.filter(like="intensity", axis=1)
             obs_like = label_props_table.drop(columns=intensities.columns)
-
+            print(obs_like)
+            print(intensities)
+            print(properties)
             return intensities, obs_like
 
         if tiling_shapes is None:
@@ -2420,13 +2484,13 @@ class TMAMeasurer(MultiScaleImageOperations):
             # Merge tables
             intensities = pd.concat(intensity_tables)
             obs_like = pd.concat(obs_tables)
-            obs_like = obs_like.rename(columns={"label": CELL_INDEX_LABEL})
 
         # Consolidate results
         if labels_name is None:
             labels_name = self.image_name + "_labels"
         obs_like["lyr"] = labels_name
         obs_like["tma_label"] = obs_like["tma_label"].astype("category")
+        obs_like = obs_like.rename(columns={"label": CELL_INDEX_LABEL})
         # Extract channel information from the intensity image, assumed to be
         # our dataarray
         channel_names = intensity_image.coords["c"].values
@@ -2448,7 +2512,7 @@ class TMAMeasurer(MultiScaleImageOperations):
         new_var["intensity_mode"] = intensity_mode
 
         spatial_px = obs_like[["centroid_x", "centroid_y"]].values
-        spatial_um = spatial_px * self.get_px_per_um()
+        spatial_um = spatial_px / self.get_px_per_um()
         adata = ad.AnnData(
             intensities.values,
             obs=obs_like,
@@ -2465,10 +2529,13 @@ class TMAMeasurer(MultiScaleImageOperations):
         adata: AnnData,
         label_name: str,
         output_table_name: str | None = None,
-        instance_key: str | None = CELL_INDEX_LABEL,
+        instance_key: str | None = None,
     ) -> None:
         if output_table_name is None:
             output_table_name = label_name + "_expression"
+
+        if instance_key is None:
+            instance_key = CELL_INDEX_LABEL
 
         self.add_table(
             adata,

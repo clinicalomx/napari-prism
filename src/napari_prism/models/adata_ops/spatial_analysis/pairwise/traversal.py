@@ -6,10 +6,10 @@ import numpy as np
 import xarray as xr
 from scipy.sparse import issparse
 
-from napari_prism.models.adata_ops.spatial_analysis.schema import (
+from napari_prism.models.adata_ops.schema import (
     CellEntity,
     CompartmentEntity,
-    create_spatial_metric,
+    create_metric,
 )
 
 
@@ -19,14 +19,14 @@ class BarrierScoreMetricAccessor:
         self._obj = xarray_obj
 
     def validate(self):
-        self._obj.spatial_metric.validate()
+        self._obj.metric.validate()
         return self._obj
 
     def plot(self):
-        self._obj.spatial_metric.plot()
+        self._obj.metric.plot()
 
     def pretty_print(self):
-        self._obj.spatial_metric.pretty_print()
+        self._obj.metric.pretty_print()
 
 
 def create_barrier_score_metric(
@@ -35,6 +35,9 @@ def create_barrier_score_metric(
     cell_population_b: CellEntity,
     cell_population_barrier: CellEntity,
     sample_id: str,
+    cell_compartment_a: CompartmentEntity | None = None,
+    cell_compartment_b: CompartmentEntity | None = None,
+    cell_compartment_barrier: CompartmentEntity | None = None,
     parameters: dict[str, Any] | None = None,
 ) -> xr.DataArray:
     """
@@ -51,14 +54,17 @@ def create_barrier_score_metric(
         parameters = {}
 
     parameters["barrier_cell"] = str(cell_population_barrier)
+    parameters["barrier_cell_compartment"] = str(cell_compartment_barrier)
 
-    return create_spatial_metric(
+    return create_metric(
         values=values,
         sample_id=sample_id,
         dims=[],
         coords={},
         cell_population_a=cell_population_a,
+        cell_compartment_a=cell_compartment_a,
         cell_population_b=cell_population_b,
+        cell_compartment_b=cell_compartment_b,
         metric_name="barrier_score",
         directional=True,
         parameters=parameters,
@@ -296,15 +302,15 @@ def barrier_score(
     else:
         results = []
         q_comp = None
-        if query_cell_compartment:
+        if query_cell_compartment and compartment_key:
             q_comp = CompartmentEntity(query_cell_compartment, compartment_key)
         t_comp = None
-        if target_cell_compartment:
+        if target_cell_compartment and compartment_key:
             t_comp = CompartmentEntity(
                 target_cell_compartment, compartment_key
             )
         b_comp = None
-        if barrier_cell_compartment:
+        if barrier_cell_compartment and compartment_key:
             b_comp = CompartmentEntity(
                 barrier_cell_compartment, compartment_key
             )
@@ -313,11 +319,9 @@ def barrier_score(
             patient_id = str(patient_id)
             for ct_p, res in v.items():
                 a, b = ct_p
-                a_instance = CellEntity(a, cell_type_key, q_comp)
-                b_instance = CellEntity(b, cell_type_key, t_comp)
-                barrier_instance = CellEntity(
-                    barrier_cell_type, cell_type_key, b_comp
-                )
+                a_instance = CellEntity(a, cell_type_key)
+                b_instance = CellEntity(b, cell_type_key)
+                barrier_instance = CellEntity(barrier_cell_type, cell_type_key)
                 results.append(
                     create_barrier_score_metric(
                         values=res,
@@ -325,6 +329,9 @@ def barrier_score(
                         cell_population_b=b_instance,
                         cell_population_barrier=barrier_instance,
                         sample_id=patient_id,
+                        cell_compartment_a=q_comp,
+                        cell_compartment_b=t_comp,
+                        cell_compartment_barrier=b_comp,
                         parameters={
                             "enforce_barrier_next_to_component": enforce_barrier_next_to_compartment,
                         },

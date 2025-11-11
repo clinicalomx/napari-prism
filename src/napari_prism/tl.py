@@ -1,5 +1,6 @@
-""".pp module. Public API functions for analysing and manipulating AnnData
-objects."""
+""".tl module. Public API functions for performing analysis on AnnData objects.
+Clustering, dimensionality reduction are covered here.
+"""
 
 from .models.adata_ops.cell_typing.clusteval import cluster_scores
 from .models.adata_ops.cell_typing.clustsearch import (
