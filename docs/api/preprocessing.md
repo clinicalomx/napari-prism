@@ -17,7 +17,6 @@ Filtering based on both marker intensity and cell-level observational values/qua
    :nosignatures:
    :toctree: ../generated/
 
-   pp.set_backend
    pp.filter_by_obs_count
    pp.filter_by_obs_value
    pp.filter_by_obs_quantile

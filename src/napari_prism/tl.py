@@ -9,7 +9,6 @@ from .models.adata_ops.cell_typing.clustsearch import (
 from .models.adata_ops.cell_typing.embeddings import (
     harmony,
     pca,
-    set_backend,
     tsne,
     umap,
 )
@@ -20,7 +19,6 @@ from .models.adata_ops.feature_modelling.obs import ObsAggregator
 # )
 
 __all__ = [
-    "set_backend",
     "pca",
     "umap",
     "tsne",

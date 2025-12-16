@@ -17,12 +17,10 @@ from .models.adata_ops.cell_typing.preprocessing import (
     neighbors,
     percentile,
     scale,
-    set_backend,
     zscore,
 )
 
 __all__ = [
-    "set_backend",
     "filter_by_obs_count",
     "filter_by_obs_value",
     "filter_by_obs_quantile",

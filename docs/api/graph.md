@@ -18,6 +18,9 @@ spatial connectivity graphs.
    :nosignatures:
    :toctree: ../generated/
 
+   gr.jsd
+   gr.gcross
+   gr.barrier_score
    gr.proximity_density
    gr.cellular_neighborhoods_sq
    gr.cellular_neighborhood_enrichment

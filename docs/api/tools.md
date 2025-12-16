@@ -17,7 +17,6 @@ Mainly wrappers for embedding functions from scanpy and rapids_singlecell. Conta
    :nosignatures:
    :toctree: ../generated/
 
-   tl.set_backend
    tl.pca
    tl.umap
    tl.tsne

@@ -7,13 +7,13 @@ import numpy as np
 import pandas as pd
 import shapely
 import skimage
+import spatialdata as sd
 import xarray as xr
 from magicgui.widgets import ComboBox, Select, Table, create_widget
 from napari.qt.threading import thread_worker
 from numpy import dtype, ndarray
 from qtpy.QtWidgets import QAbstractItemView, QHBoxLayout
 from spatialdata.transformations import (
-    Identity,
     Scale,
     Translation,
     get_transformation,
@@ -535,7 +535,7 @@ class TMAMaskerNapariWidget(MultiScaleImageNapariWidget):
 
         self._save_results_button = create_widget(
             value=False,
-            name="Save results",
+            name="Add to spatialdata",
             annotation=bool,
             widget_type="PushButton",
         )
@@ -946,8 +946,9 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
                 selected.metadata["sdata"], selected.metadata["name"]
             )
             self.reset_choices()
-            self._run_segmentation_button.enabled = True
+            self._run_segmentation_button.enabled = False
             self._preview_segmentation_button.enabled = True
+            self._save_segmentation_button.enabled = False
         else:
             if (
                 selected is not None
@@ -1036,7 +1037,10 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
             choices=self.get_channels,
             label="Select channel(s) for segmentation",
         )
-        self._segmentation_channel_selection.native.setMinimumHeight(100)
+        self._segmentation_channel_selection.native.setMinimumHeight(500)
+        self._segmentation_channel_selection.changed.connect(
+            self.validate_parameters
+        )
 
         self._channel_merge_method_selection = ComboBox(
             name="ChannelMergeMethods",
@@ -1127,7 +1131,7 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         )
         self._save_segmentation_button = create_widget(
             value=False,
-            name="Save Segmentation",
+            name="Add to spatialdata",
             annotation=bool,
             widget_type="PushButton",
         )
@@ -1160,6 +1164,12 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         )
 
         self.native.layout().addLayout(self._buttons)
+
+    def validate_parameters(self):
+        if len(self._segmentation_channel_selection.value) == 0:
+            self.disable_function_button(self._run_segmentation_button)
+        else:
+            self.enable_function_button(self._run_segmentation_button)
 
     def get_tiling_shape_layers(self, widget=None):
         return [
@@ -1274,16 +1284,31 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
 
         image_list = [dataarray_to_rgb(im) for im in image_list]
 
-        return image_list
+        transformations = get_transformation(image)
+
+        return image_list, transformations
 
     def preview_segmentation(self):
-        def _handle_preview_segmentation(image_list):
+        def _handle_preview_segmentation(results):
+            image_list, transformations = results
+            affine = transformations.to_affine_matrix(("y", "x"), ("y", "x"))
+
+            parent_layer = self.viewer.layers.selection.active
+
             self.viewer.add_image(
                 image_list,
+                affine=affine,
                 name="Segmentation Input Preview",
                 multiscale=True,
                 blending="additive",
                 rgb=True,
+                metadata={
+                    # "sdata": self.model.sdata,
+                    # "name": "Segmentation Input Preview",
+                    # "transforms": transformations,
+                    # "parent_layer": parent_layer,
+                    "_current_cs": parent_layer.metadata["_current_cs"],
+                },
             )
 
         worker = self._preview_segmentation()
@@ -1302,38 +1327,36 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
         worker.start()
         worker.returned.connect(self.add_segmentation_layer)
         # worker.finished.connect(self.post_run_segmentation)
-        worker.finished.connect(
-            lambda: self.enable_function_button(
-                button=self._run_segmentation_button
-            )
-        )
+        # worker.finished.connect(
+        #     lambda: self.enable_function_button(
+        #         button=self._run_segmentation_button
+        #     )
+        # )
         worker.finished.connect(self.refresh_sdata_widget)
 
     def add_segmentation_layer(self, out):
-        import cellpose.version
-        from packaging import version
-
-        is_cpsam = version.parse(cellpose.version) >= version.parse("4")
+        # is_cpsam = version.parse(cellpose.version) >= version.parse("4")
         global_seg_mask, transformation_sequence = out
-        if not is_cpsam:
-            affine = transformation_sequence.to_affine_matrix(
-                ("y", "x"), ("x", "y")
-            )
-        else:
-            affine = None
+        # if not is_cpsam:
+        #     affine = transformation_sequence.to_affine_matrix(
+        #         ("y", "x"), ("x", "y")
+        #     )
+        # else:
+        #     affine = transformation_sequence.to_affine_matrix(
+        #         ("x", "y"), ("x", "y")
+        #     )
+        affine = transformation_sequence.to_affine_matrix(
+            ("y", "x"), ("y", "x")
+        )
         parent_layer = self.viewer.layers.selection.active
 
         global_seg_mask = xr.DataArray(
-            global_seg_mask.T,
+            global_seg_mask,
             dims=("y", "x"),
-            coords={
-                "y": np.arange(global_seg_mask.shape[1]),
-                "x": np.arange(global_seg_mask.shape[0]),
-            },
         )
 
         self.viewer.add_labels(
-            global_seg_mask,
+            global_seg_mask.T,
             name=self.model.image_name + "_segmentation",
             affine=affine,
             metadata={
@@ -1370,25 +1393,30 @@ class TMASegmenterNapariWidget(MultiScaleImageNapariWidget):
 
             data_sd = tiling_layer.metadata["sdata"].shapes[tiling_layer.name]
             data_sd = data_sd.copy()
-            if isinstance(get_transformation(data_sd), Identity):
-                transforms = [get_transformation(data_sd)]
-            else:
-                transforms = get_transformation(data_sd).transformations
-            # Scale must be supplied.?
-            scale = [x for x in transforms if isinstance(x, Scale)][0].scale
-            # Rescale data;
-            data_sd["geometry"] = data_sd["geometry"].scale(
-                *scale, origin=(0, 0)
+            # if isinstance(get_transformation(data_sd), Identity):
+            #     transforms = [get_transformation(data_sd)]
+            # else:
+            #     transforms = get_transformation(data_sd).transformations
+            # # Scale must be supplied.?
+            # scale = [x for x in transforms if isinstance(x, Scale)][0].scale
+            # # Rescale data;
+            # data_sd["geometry"] = data_sd["geometry"].scale(
+            #     *scale, origin=(0, 0)
+            # )
+
+            # translate = [x for x in transforms if isinstance(x, Translation)]
+            # if translate != []:
+            #     axes = translate[0].axes
+            #     translate = translate[0].translation
+            #     if axes[0] == "y":
+            #         translate = translate[::-1]
+
+            #     data_sd["geometry"] = data_sd["geometry"].translate(*translate)
+            # TODO: inherit and apply transform
+            # actualise the transforms to the shapely polygons
+            data_sd["geometry"] = sd.transform(
+                data_sd["geometry"], to_coordinate_system="global"
             )
-
-            translate = [x for x in transforms if isinstance(x, Translation)]
-            if translate != []:
-                axes = translate[0].axes
-                translate = translate[0].translation
-                if axes[0] == "y":
-                    translate = translate[::-1]
-
-                data_sd["geometry"] = data_sd["geometry"].translate(*translate)
 
         scale = self.get_multiscale_image_scales()[self.scale_index]
         out = self.model.segment_all(  # noqa: F841
