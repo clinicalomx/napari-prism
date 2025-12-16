@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from napari_prism.models.adata_ops.feature_modelling._discrete import (
+from napari_prism.models.adata_ops.feature_modelling.discrete import (
     _consolidate_statistics,
     _get_x_y_by_binary_label,
     _normalise_log2p,

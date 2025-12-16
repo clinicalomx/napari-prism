@@ -9,7 +9,6 @@ cells (i.e. cells belonging to different TMA cores, images, etc.)
 from time import time
 
 import numpy as np
-import scipy
 
 
 def timer_func(func):
@@ -23,24 +22,6 @@ def timer_func(func):
         return result
 
     return wrap_func
-
-
-def symmetrise_graph(adjacency_matrix):
-    """Symmetrise a graph adjacency matrix"""
-    # Symmetrize graph (make undirected); if A->B, then enforce B->A
-    # Rather than dividing by 2, clip and sign to enforce 0/1
-    if isinstance(adjacency_matrix, np.ndarray):
-        sym = adjacency_matrix + adjacency_matrix.T
-        sym = np.clip(sym, 0, 1)
-
-    elif isinstance(adjacency_matrix, scipy.sparse.csr.csr_matrix):
-        sym = adjacency_matrix + adjacency_matrix.T
-        sym = sym.sign()
-
-    else:
-        raise ValueError("invalid adjacency matrix type")
-
-    return sym
 
 
 def normalise_log2p(X, pseudocount=1e-3):

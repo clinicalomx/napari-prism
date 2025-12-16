@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from napari_prism.models.adata_ops.cell_typing._preprocessing import (
+from napari_prism.models.adata_ops.cell_typing.preprocessing import (
     _current_backend,
     fill_na,
     filter_by_obs_count,

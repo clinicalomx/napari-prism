@@ -1,16 +1,54 @@
+import random
 from typing import Any
 
 import pytest
 import scanpy as sc
+import squidpy as sq
 from anndata import AnnData
 from qtpy.QtWidgets import QTreeWidget
 
-from napari_prism.models.adata_ops.cell_typing._tree import AnnDataNodeQT
+from napari_prism.models.adata_ops.cell_typing.tree import AnnDataNodeQT
+from napari_prism.models.adata_ops.spatial_analysis.simulation.poisson import (
+    simulate_poisson_roi_data_from_adata,
+)
 
 
-@pytest.fixture
+@pytest.fixture()
 def adata() -> AnnData:
     return sc.datasets.pbmc68k_reduced()
+
+
+@pytest.fixture()
+def adata_spatial(adata) -> AnnData:
+    """
+    Generate a poisson process over the anndata for 'fake' spatial coords.
+
+    Simulate >1 sample to mimic ROI-type spatial datasets like TMAs.
+    """
+    sp_key = "spatial"
+    ncells = adata.shape[0]
+    adata.obs["library"] = [random.choice(["s1", "s2"]) for _ in range(ncells)]
+    adata_with_fake_coord = simulate_poisson_roi_data_from_adata(
+        adata, spatial_key_added=sp_key, library_key="library", roi_radius=1000
+    )
+    return adata_with_fake_coord
+
+
+@pytest.fixture()
+def adata_spatial_graph(adata_spatial) -> AnnData:
+    """
+    Generate a sparse matrix representation of spatial connectedness with the
+    fake AnnData coordinates, stored in .obsp.
+
+    Spatial connectedness here is assumed to be a K=10 KNN for simplicity.
+    """
+    sq.gr.spatial_neighbors(
+        adata_spatial,
+        spatial_key="spatial",
+        coord_type="generic",
+        n_neighs=10,
+    )
+    return adata_spatial
 
 
 @pytest.fixture

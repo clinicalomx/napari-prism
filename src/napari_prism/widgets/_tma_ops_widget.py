@@ -75,14 +75,14 @@ class TMAImageAnalysisParentWidget(QTabWidget):
             self.viewer, init_model_dearrayer
         )
         #        self.dearrayer.max_width = 475
-        self.dearrayer.max_height = 400
+        self.dearrayer.max_height = 600
         self.addTab(self.dearrayer.native, "Dearrayer")
 
         self.segmenter = TMASegmenterNapariWidget(
             self.viewer, init_model_segmenter
         )
         #        self.segmenter.max_width = 475
-        self.segmenter.max_height = 500
+        self.segmenter.max_height = 700
         self.addTab(self.segmenter.native, "Segmenter")
 
         self.measurer = TMAMeasurerNapariWidget(

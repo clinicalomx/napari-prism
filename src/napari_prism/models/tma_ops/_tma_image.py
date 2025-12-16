@@ -7,17 +7,16 @@ from threading import Lock
 from typing import Any, Literal
 
 import anndata as ad
-import cellpose.version
 import geopandas
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 import skimage
+import spatialdata as sd
 import torch
 import xarray as xr
 from anndata import AnnData
-from cellpose import core, denoise, models
 from dask.array import Array
 from geopandas import GeoDataFrame
 from loguru import logger
@@ -40,7 +39,9 @@ from spatialdata.transformations import (
     Scale,
     Sequence,
     Translation,
+    get_transformation,
     get_transformation_between_coordinate_systems,
+    set_transformation,
 )
 from xarray import DataArray, DataTree
 
@@ -160,6 +161,7 @@ class SdataImageOperations:
             self.sdata,
             "global",  # Px
             coordinate_system,
+            self.get_image(),  # as intermediate
         )
         scaling_factor_x = base_transformation.to_affine_matrix("x", "x")[0, 0]
         scaling_factor_y = base_transformation.to_affine_matrix("y", "y")[0, 0]
@@ -271,6 +273,30 @@ class SdataImageOperations:
         sdata[element_name] = element
         sdata.write_element(element_name, overwrite=True)
 
+    def add_cs_from_model_image(
+        self,
+        element,
+        query_cs="global",
+        target_cs="um",
+    ):
+        """Adds the target coordinate system using the transformation
+        of the given element to query, then appends and inherits this model's
+        parent image transformation of query to target.
+
+        i.e.) If `element` was derived from `parent`:
+            element -- TransformA ---> query
+            parent (query) -- TransformB ---> target
+            Then element --- TransformA ---> query ---> TransformB ---> target
+        """
+        element_to_query = get_transformation(
+            element, to_coordinate_system=query_cs
+        )
+        query_to_target = get_transformation_between_coordinate_systems(
+            self.sdata, query_cs, target_cs, self.get_image()
+        )
+        element_to_target = Sequence([element_to_query, query_to_target])
+        set_transformation(element, element_to_target, target_cs)
+
     def add_image(
         self,
         image: ndarray[Any, dtype[float64]] | DataArray | Array,
@@ -299,6 +325,17 @@ class SdataImageOperations:
                 " element in memory."
             )
 
+        if "transformations" in kwargs:
+            transformations = kwargs["transformations"]
+            if "global" in transformations and "um" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[image_label], "global", "um"
+                )
+            elif "um" in transformations and "global" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[image_label], "um", "global"
+                )
+
     def add_label(
         self,
         label: ndarray[Any, dtype[float64]] | DataArray | Array,
@@ -318,7 +355,7 @@ class SdataImageOperations:
         """
         # Cast to dask -> DataArrays dont like inplace brush erasing / inpainting
         if isinstance(label, DataArray):
-            label = label.data.compute()
+            label = label.data
 
         # NOTE
         # for compat with napari > 0.5, convert to uint8.
@@ -339,6 +376,16 @@ class SdataImageOperations:
                 "Spatialdata object is not stored on disk, could only add"
                 " element in memory."
             )
+        if "transformations" in kwargs:
+            transformations = kwargs["transformations"]
+            if "global" in transformations and "um" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[label_name], "global", "um"
+                )
+            elif "um" in transformations and "global" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[label_name], "um", "global"
+                )
 
     def add_shapes(
         self,
@@ -371,6 +418,16 @@ class SdataImageOperations:
                 "Spatialdata object is not stored on disk, could only add"
                 " element in memory."
             )
+        if "transformations" in kwargs:
+            transformations = kwargs["transformations"]
+            if "global" in transformations and "um" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[shapes_name], "global", "um"
+                )
+            elif "um" in transformations and "global" not in transformations:
+                self.add_cs_from_model_image(
+                    self.sdata[shapes_name], "um", "global"
+                )
 
     def _get_scaled_polygon(self, polygon, scale) -> Polygon:
         """Returns the polygons, but re-scaled to 'real' world measurements."""
@@ -808,9 +865,6 @@ class TMAMasker(MultiScaleImageOperations):
             (Optional) If rasterize is False, the transformation sequence and
             the downsampling factor.
         """
-        # Log transformations to return to global
-        transformations = []
-
         # Retrieve image to process
         multichannel_image = self.get_image_by_scale(scale=scale)  # C, Y, X
 
@@ -826,38 +880,49 @@ class TMAMasker(MultiScaleImageOperations):
         #         selected_channel_image, contrast_limits, gamma
         #     )
 
-        ds_factor = self.get_downsampling_factor(selected_channel_image)
+        # # Upscale transformations
+        # upscale_transformations = Scale(
+        #     [ds_factor, ds_factor], axes=("x", "y")
+        # )
+        # transformations.append(upscale_transformations)
 
-        # Upscale transformations
-        upscale_transformations = Scale(
-            [ds_factor, ds_factor], axes=("x", "y")
-        )
-        transformations.append(upscale_transformations)
+        # # Subset to given bounding box --> Need to remap
+        # if mask_selection is not None:
+        #     xmin, ymin, xmax, ymax = mask_selection
 
-        # Subset to given bounding box --> Need to remap
+        #     # Add translation to the transformations in the original space
+        #     translation_transformation = Translation(
+        #         [xmin, ymin], axes=("x", "y")
+        #     )
+        #     transformations.append(translation_transformation)
+
+        #     # Remap bounding box to downsampled space
+        #     xmin /= ds_factor
+        #     ymin /= ds_factor
+        #     xmax /= ds_factor
+        #     ymax /= ds_factor
+        #     xmin, ymin = map(math.floor, (xmin, ymin))
+        #     xmax, ymax = map(math.ceil, (xmax, ymax))
+        #     selected_channel_image = selected_channel_image.isel(
+        #         x=slice(xmin, xmax), y=slice(ymin, ymax)
+        #     )
+
+        # transformation_sequence = Sequence(transformations)
+
         if mask_selection is not None:
             xmin, ymin, xmax, ymax = mask_selection
-
-            # Add translation to the transformations in the original space
-            translation_transformation = Translation(
-                [xmin, ymin], axes=("x", "y")
-            )
-            transformations.append(translation_transformation)
-
-            # Remap bounding box to downsampled space
-            xmin /= ds_factor
-            ymin /= ds_factor
-            xmax /= ds_factor
-            ymax /= ds_factor
-            xmin, ymin = map(math.floor, (xmin, ymin))
-            xmax, ymax = map(math.ceil, (xmax, ymax))
-            selected_channel_image = selected_channel_image.isel(
-                x=slice(xmin, xmax), y=slice(ymin, ymax)
+            selected_channel_image = sd.bounding_box_query(
+                selected_channel_image,
+                axes=("x", "y"),
+                min_coordinate=[xmin, ymin],
+                max_coordinate=[xmax, ymax],
+                target_coordinate_system=self.reference_coordinate_system,
             )
 
-        transformation_sequence = Sequence(transformations)
+        transformation_sequence = get_transformation(selected_channel_image)
 
         # convert um parameters to px equivalents;
+        ds_factor = self.get_downsampling_factor(selected_channel_image)
         sigma_px = self.convert_um_to_px(sigma_um)
         expansion_px = self.convert_um_to_px(expansion_um)
         estimated_core_diameter_px = self.convert_um_to_px(
@@ -948,7 +1013,9 @@ class TMAMasker(MultiScaleImageOperations):
             masks_gdf,
             f"{channel_label}_poly",
             write_element=write_element,
-            transformations={"global": transformation_sequence},
+            transformations={
+                self.reference_coordinate_system: transformation_sequence
+            },
         )
 
     def save_masks(
@@ -963,7 +1030,9 @@ class TMAMasker(MultiScaleImageOperations):
             f"{channel_label}",
             write_element=write_element,
             dims=("y", "x"),
-            transformations={"global": transformation_sequence},
+            transformations={
+                self.reference_coordinate_system: transformation_sequence
+            },
         )
 
     def _rasterize_tma_masks(
@@ -1806,6 +1875,7 @@ class TMASegmenter(MultiScaleImageOperations):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.is_cpsam = False
 
     @no_grad()
     def cellpose_segmentation(
@@ -1844,6 +1914,9 @@ class TMASegmenter(MultiScaleImageOperations):
         Returns:
             Dictionary of the segmentation results and metadata
         """
+        import cellpose.version
+        from cellpose import core, denoise, models
+
         device = None
         # sentinel values for diameter
         if nuclei_diam_um is not None:
@@ -1868,8 +1941,8 @@ class TMASegmenter(MultiScaleImageOperations):
         if custom_model is None:
             custom_model = False
 
-        is_cpsam = version.parse(cellpose.version) >= version.parse("4")
-        if custom_model is False and is_cpsam:
+        self.is_cpsam = version.parse(cellpose.version) >= version.parse("4")
+        if custom_model is False and self.is_cpsam:
             print("Using CellposeSAM")
             custom_model = "cpsam"
 
@@ -1950,7 +2023,7 @@ class TMASegmenter(MultiScaleImageOperations):
         denoise_model: CP_DENOISE_MODELS_typed | None = None,
         # verbose=True,
         # show_results=False,
-        # denoise_model=None,
+        # denoise_model=None,_"
         debug: bool = False,
         preview: bool = False,
         # nuclear_channel: str | None = None,
@@ -1991,8 +2064,6 @@ class TMASegmenter(MultiScaleImageOperations):
         Returns:
             None if `preview` is False, otherwise the input image.
         """
-        # Log transformations to return to global
-        transformations = []
 
         # Chosen segmentation scale
         multichannel_image = self.get_image_by_scale(scale=scale)  # CYX
@@ -2005,10 +2076,6 @@ class TMASegmenter(MultiScaleImageOperations):
 
         # Log scaling, if not multiscale.
         ds_factor = self.get_downsampling_factor(selected_channel_image)
-        upscale_transformations = Scale(
-            [ds_factor, ds_factor], axes=("x", "y")
-        )
-        transformations.append(upscale_transformations)
 
         # If multiple segmentation channels, merge
         if isinstance(segmentation_channel, list):
@@ -2042,7 +2109,6 @@ class TMASegmenter(MultiScaleImageOperations):
         else:
             # Prepare cellpose inputs
             channel_axis = 2 if optional_nuclear_channel else None
-            transformation_sequence = Sequence(transformations)
             if not optional_nuclear_channel:
                 # Recollapse c dim if no nuclear channel ->
                 input_image = input_image.squeeze("c")
@@ -2211,7 +2277,6 @@ class TMASegmenter(MultiScaleImageOperations):
                     **kwargs,
                 )
                 global_seg_mask = results["masks"].astype(np.int32)
-                transformation_sequence = Sequence(transformations)
             #     seg_table = pd.DataFrame(
             #         index=range(1, 1 + global_seg_mask.max())
             #     )
@@ -2222,7 +2287,9 @@ class TMASegmenter(MultiScaleImageOperations):
             #     seg_table["lyr"] = self.image_name + "_labels"
 
             # seg_table["tma_label"] = seg_table["tma_label"].astype("category")
-
+            transformation_sequence = get_transformation(
+                selected_channel_image
+            )
             return global_seg_mask, transformation_sequence
 
             # self.add_table(
@@ -2246,7 +2313,7 @@ class TMASegmenter(MultiScaleImageOperations):
             global_seg_mask,
             label_name,
             write_element=write_element,
-            dims=("x", "y"),
+            dims=("x", "y"),  # TODO: should be reading parent image axes;
             transformations={"global": transformation_sequence},
             # scale_factors=DEFAULT_MULTISCALE_DOWNSCALE_FACTORS, # multiscale
         )
@@ -2333,7 +2400,8 @@ class TMAMeasurer(MultiScaleImageOperations):
                     properties=properties,
                 )
             elif intensity_mode == "median":
-                properties.remove("intensity_mean")
+                if "intensity_mean" in properties:
+                    properties.remove("intensity_mean")
                 label_props_table = skimage.measure.regionprops_table(
                     arr,  # DataArray + Dask -> np.array
                     intensity_image=intensity_image.data.compute(),
@@ -2342,12 +2410,13 @@ class TMAMeasurer(MultiScaleImageOperations):
                 )
             else:
                 raise ValueError("Unsupported intensity aggregation method.")
-
             label_props_table = pd.DataFrame(label_props_table)
             # Extract the intensities as expression data
             intensities = label_props_table.filter(like="intensity", axis=1)
             obs_like = label_props_table.drop(columns=intensities.columns)
-
+            print(obs_like)
+            print(intensities)
+            print(properties)
             return intensities, obs_like
 
         if tiling_shapes is None:
@@ -2419,13 +2488,13 @@ class TMAMeasurer(MultiScaleImageOperations):
             # Merge tables
             intensities = pd.concat(intensity_tables)
             obs_like = pd.concat(obs_tables)
-            obs_like = obs_like.rename(columns={"label": CELL_INDEX_LABEL})
 
         # Consolidate results
         if labels_name is None:
             labels_name = self.image_name + "_labels"
         obs_like["lyr"] = labels_name
         obs_like["tma_label"] = obs_like["tma_label"].astype("category")
+        obs_like = obs_like.rename(columns={"label": CELL_INDEX_LABEL})
         # Extract channel information from the intensity image, assumed to be
         # our dataarray
         channel_names = intensity_image.coords["c"].values
@@ -2447,7 +2516,7 @@ class TMAMeasurer(MultiScaleImageOperations):
         new_var["intensity_mode"] = intensity_mode
 
         spatial_px = obs_like[["centroid_x", "centroid_y"]].values
-        spatial_um = spatial_px * self.get_px_per_um()
+        spatial_um = spatial_px / self.get_px_per_um()
         adata = ad.AnnData(
             intensities.values,
             obs=obs_like,
@@ -2464,10 +2533,13 @@ class TMAMeasurer(MultiScaleImageOperations):
         adata: AnnData,
         label_name: str,
         output_table_name: str | None = None,
-        instance_key: str | None = CELL_INDEX_LABEL,
+        instance_key: str | None = None,
     ) -> None:
         if output_table_name is None:
             output_table_name = label_name + "_expression"
+
+        if instance_key is None:
+            instance_key = CELL_INDEX_LABEL
 
         self.add_table(
             adata,
@@ -2877,3 +2949,729 @@ def measure_tma(
         return model.sdata
     else:
         return results
+
+
+def create_core_sdata(
+    sdata: SpatialData,
+    tma_table_name: str = "tma_table",
+    image_name: str | None = None,
+    labels_name: str | None = None,
+    mode: Literal["individual", "consolidated"] = "consolidated",
+    core_labels: list[str] | None = None,
+) -> SpatialData | list[SpatialData]:
+    """
+    Extract individual TMA cores as separate SpatialData elements or objects.
+
+    This function creates per-core spatial data structures where each core
+    has its own local coordinate system starting at (0, 0). Each core contains
+    its cropped image, labels, and associated table data.
+
+    Args:
+        sdata: SpatialData object containing TMA data.
+        tma_table_name: Name of the table containing TMA core metadata.
+        image_name: Name of the image to extract cores from. If None, uses the
+            first multiscale image found.
+        labels_name: Name of the labels to extract. If None, no labels extracted.
+        mode: Output mode:
+            - "individual": Returns list of SpatialData objects (one per core)
+            - "consolidated": Returns single SpatialData with per-core elements
+                (e.g., "A1_image", "A1_labels")
+        core_labels: List of specific core labels to extract (e.g., ["A-1", "B-2"]).
+            If None, extracts all cores from tma_table.
+
+    Returns:
+        If mode="individual": List of SpatialData objects, one per core.
+        If mode="consolidated": Single SpatialData object with per-core elements.
+
+    """
+    # Get TMA core metadata
+    if tma_table_name not in sdata.tables:
+        raise ValueError(f"Table '{tma_table_name}' not found in SpatialData")
+
+    tma_table = sdata.tables[tma_table_name]
+
+    # Determine which cores to extract
+    if core_labels is None:
+        if "tma_label" not in tma_table.obs.columns:
+            raise ValueError("tma_table must have 'tma_label' column")
+        core_labels = tma_table.obs["tma_label"].tolist()
+
+    # Auto-detect image name if not provided
+    if image_name is None:
+        if len(sdata.images) == 0:
+            raise ValueError("No images found in SpatialData")
+        image_name = list(sdata.images.keys())[0]
+
+    if image_name not in sdata.images:
+        raise ValueError(f"Image '{image_name}' not found in SpatialData")
+
+    # Get the envelope shapes to determine core bounding boxes
+    envelope_name = "tma_envelope"
+    if envelope_name not in sdata.shapes:
+        raise ValueError(
+            f"Shape '{envelope_name}' not found. Run TMADearrayer first."
+        )
+
+    envelopes_gdf = sdata.shapes[envelope_name]
+
+    # Storage for extracted cores
+    if mode == "individual":
+        core_sdatas = []
+    else:  # consolidated
+        consolidated_images = {}
+        consolidated_labels = {}
+        # consolidated_shapes = {}
+        consolidated_tables = {}
+
+    # Process each core
+    for core_label in core_labels:
+        # Get core envelope
+        core_envelope = envelopes_gdf[envelopes_gdf["tma_label"] == core_label]
+        if len(core_envelope) == 0:
+            logger.warning(
+                f"Core {core_label} not found in envelopes, skipping"
+            )
+            continue
+
+        # Get bounding box
+        bounds = core_envelope.geometry.iloc[
+            0
+        ].bounds  # (minx, miny, maxx, maxy)
+        xmin, ymin, xmax, ymax = bounds
+        # width = xmax - xmin
+        # height = ymax - ymin
+
+        # Extract image crop
+        image_data = sdata.images[image_name]
+        if isinstance(image_data, DataTree):
+            # Multiscale image - use scale0
+            image_arr = image_data["scale0"].to_array()
+        else:
+            image_arr = image_data
+
+        # Crop image (assumes axes: c, y, x)
+        core_image = image_arr.sel(
+            x=slice(xmin, xmax),
+            y=slice(ymin, ymax),
+        )
+
+        # Create local coordinate system transformation
+        # Translation to move core origin to (0, 0)
+        translation_to_local = Translation([-xmin, -ymin], axes=("x", "y"))
+
+        # Get original transformations
+        original_transforms = get_transformation(image_arr, get_all=True)
+
+        # Create transformations for core
+        core_transforms = {}
+        for cs_name, transformations in original_transforms.items():
+            # Chain: original transform -> translate to local coords
+            core_transforms[cs_name] = Sequence(
+                [transformations, translation_to_local]
+            )
+
+        # Add local coordinate system (identity)
+        core_transforms["local"] = translation_to_local
+
+        # Create core image model
+        core_image_model = Image2DModel.parse(
+            core_image,
+            transformations=core_transforms,
+            dims=("c", "y", "x"),
+        )
+
+        # Extract labels if provided
+        core_labels_model = None
+        if labels_name is not None and labels_name in sdata.labels:
+            labels_data = sdata.labels[labels_name]
+
+            # Crop labels
+            core_labels_arr = labels_data.sel(
+                x=slice(xmin, xmax),
+                y=slice(ymin, ymax),
+            )
+
+            # Create labels model with same transformations
+            core_labels_model = Labels2DModel.parse(
+                core_labels_arr,
+                transformations=core_transforms,
+                dims=("y", "x"),
+            )
+
+        # Extract relevant table rows
+        core_table = None
+        if labels_name is not None:
+            # Look for table associated with this labels layer
+            for table_name, table in sdata.tables.items():
+                if table_name == tma_table_name:
+                    continue  # Skip the TMA metadata table
+
+                # Check if table is linked to labels
+                if (
+                    hasattr(table.uns, "get")
+                    and "spatialdata_attrs" in table.uns
+                ):
+                    region = table.uns["spatialdata_attrs"].get("region")
+                    if region == labels_name:
+                        # Filter table for this core
+                        if "tma_label" in table.obs.columns:
+                            core_table = table[
+                                table.obs["tma_label"] == core_label
+                            ].copy()
+                            # Update region to point to new labels
+                            core_table.uns["spatialdata_attrs"]["region"] = (
+                                f"{core_label}_labels"
+                                if mode == "consolidated"
+                                else "labels"
+                            )
+                        break
+
+        # Build SpatialData for this core
+        if mode == "individual":
+            core_sdata_dict = {"images": {"image": core_image_model}}
+
+            if core_labels_model is not None:
+                core_sdata_dict["labels"] = {"labels": core_labels_model}
+
+            if core_table is not None:
+                core_sdata_dict["tables"] = {"table": core_table}
+
+            core_sdata = SpatialData(**core_sdata_dict)
+            core_sdatas.append(core_sdata)
+
+        else:  # consolidated
+            consolidated_images[f"{core_label}_image"] = core_image_model
+
+            if core_labels_model is not None:
+                consolidated_labels[f"{core_label}_labels"] = core_labels_model
+
+            if core_table is not None:
+                consolidated_tables[f"{core_label}_table"] = core_table
+
+    # Return results based on mode
+    if mode == "individual":
+        return core_sdatas
+    else:
+        sdata_dict = {}
+        if consolidated_images:
+            sdata_dict["images"] = consolidated_images
+        if consolidated_labels:
+            sdata_dict["labels"] = consolidated_labels
+        if consolidated_tables:
+            sdata_dict["tables"] = consolidated_tables
+
+        return SpatialData(**sdata_dict)
+
+
+def get_core_metadata(
+    sdata: SpatialData,
+    tma_table_name: str = "tma_table",
+) -> pd.DataFrame:
+    """
+    Extract metadata DataFrame for TMA cores.
+
+    Args:
+        sdata: SpatialData object containing TMA data.
+        tma_table_name: Name of the table containing TMA core metadata.
+
+    Returns:
+        DataFrame with core metadata indexed by tma_label.
+    """
+    if tma_table_name not in sdata.tables:
+        raise ValueError(f"Table '{tma_table_name}' not found in SpatialData")
+
+    tma_table = sdata.tables[tma_table_name]
+
+    # Convert to DataFrame
+    metadata_df = tma_table.obs.copy()
+
+    # Set tma_label as index if it exists
+    if "tma_label" in metadata_df.columns:
+        metadata_df = metadata_df.set_index("tma_label")
+
+    return metadata_df
+
+
+def calculate_grid_layout(
+    core_labels: list[str],
+    metadata: pd.DataFrame | None = None,
+    grouping_vars: list[str] | None = None,
+    layout: Literal["horizontal", "vertical"] = "horizontal",
+    cores_per_row: int | None = None,
+) -> dict[str, tuple[int, int]]:
+    """
+    Calculate grid positions for TMA cores based on metadata grouping.
+
+    Args:
+        core_labels: List of core labels to arrange.
+        metadata: DataFrame with core metadata indexed by tma_label.
+        grouping_vars: List of metadata columns to group by. If None, cores
+            are simply sorted by name.
+        layout: Layout direction for groups:
+            - "horizontal": Groups arranged left-to-right
+            - "vertical": Groups arranged top-to-bottom
+        cores_per_row: Number of cores per row. If None, auto-calculated based
+            on number of cores (approximately square grid).
+
+    Returns:
+        Dictionary mapping core_label -> (row, col) grid position.
+    """
+    # Sort cores
+    sorted_cores = sorted(core_labels)
+
+    # Group cores if grouping variables provided
+    if grouping_vars is not None and metadata is not None:
+        # Verify grouping variables exist
+        missing_vars = set(grouping_vars) - set(metadata.columns)
+        if missing_vars:
+            raise ValueError(
+                f"Grouping variables not found in metadata: {missing_vars}"
+            )
+
+        # Create grouping key
+        groups = {}
+        for core_label in sorted_cores:
+            if core_label in metadata.index:
+                group_key = tuple(
+                    metadata.loc[core_label, var] for var in grouping_vars
+                )
+                if group_key not in groups:
+                    groups[group_key] = []
+                groups[group_key].append(core_label)
+            else:
+                # Handle cores without metadata
+                if "unknown" not in groups:
+                    groups["unknown"] = []
+                groups["unknown"].append(core_label)
+
+        # Sort groups by key
+        sorted_groups = sorted(groups.items())
+
+        # Arrange cores within each group
+        arranged_cores = []
+        for _, group_cores in sorted_groups:
+            arranged_cores.extend(sorted(group_cores))
+
+        sorted_cores = arranged_cores
+
+    # Calculate grid dimensions
+    n_cores = len(sorted_cores)
+    if cores_per_row is None:
+        # Approximately square grid
+        cores_per_row = int(np.ceil(np.sqrt(n_cores)))
+
+    # Assign grid positions
+    grid_positions = {}
+    for idx, core_label in enumerate(sorted_cores):
+        row = idx // cores_per_row
+        col = idx % cores_per_row
+        grid_positions[core_label] = (row, col)
+
+    return grid_positions
+
+
+def arrange_cores_in_grid(
+    sdata: SpatialData | list[SpatialData],
+    tma_table_name: str = "tma_table",
+    grouping_vars: list[str] | None = None,
+    layout: Literal["horizontal", "vertical"] = "horizontal",
+    padding_factor: float = 0.2,
+    cores_per_row: int | None = None,
+    coordinate_system_name: str | None = None,
+) -> SpatialData:
+    """
+    Arrange TMA cores in a grid layout with a new coordinate system.
+
+    This function creates a new coordinate system that positions cores in a grid
+    arrangement. Cores can be organized by metadata variables (e.g., treatment
+    groups, responder status).
+
+    Args:
+        sdata: Either:
+            - Single SpatialData with per-core elements (from create_core_sdata
+              with mode="consolidated")
+            - List of SpatialData objects (from create_core_sdata with
+              mode="individual")
+        tma_table_name: Name of the table containing TMA core metadata.
+        grouping_vars: List of metadata columns to group cores by (e.g.,
+            ["Response"]). Cores with the same group values will be placed
+            together. If None, cores are sorted by name.
+        layout: Layout direction for groups (currently uses default grid).
+        padding_factor: Spacing between cores as fraction of average core
+            width/height. Default 0.2 = 20% spacing.
+        cores_per_row: Number of cores per row. If None, creates approximately
+            square grid.
+        coordinate_system_name: Name for the new grid coordinate system. If None,
+            auto-generated as "grid_global" or "grid_sorted_by_{vars}".
+
+    Returns:
+        SpatialData object with grid coordinate system added to all elements.
+
+    Example:
+        >>> # Simple grid arrangement
+        >>> sdata_grid = arrange_cores_in_grid(sdata_cores)
+        >>>
+        >>> # Arrange by response status
+        >>> sdata_grid = arrange_cores_in_grid(
+        ...     sdata_cores,
+        ...     grouping_vars=["Response"],
+        ...     padding_factor=0.3
+        ... )
+        >>> # Cores with Response="Responder" on left, "Non-responder" on right
+    """
+    # Handle input type
+    if isinstance(sdata, list):
+        # Convert list of SpatialData to consolidated
+        # For now, raise error - need to implement concatenation
+        raise NotImplementedError(
+            "List input not yet supported. Use mode='consolidated' in create_core_sdata"
+        )
+    else:
+        # Consolidated mode
+        consolidated_sdata = sdata
+
+    # Extract core labels from element names
+    core_labels = []
+    for img_name in consolidated_sdata.images:
+        if img_name.endswith("_image"):
+            core_label = img_name.replace("_image", "")
+            core_labels.append(core_label)
+
+    if len(core_labels) == 0:
+        raise ValueError(
+            "No cores found in SpatialData (expected elements like 'A-1_image')"
+        )
+
+    # Get metadata if grouping requested
+    metadata = None
+    if (
+        grouping_vars is not None
+        and tma_table_name in consolidated_sdata.tables
+    ):
+        metadata = get_core_metadata(consolidated_sdata, tma_table_name)
+
+    # Calculate grid positions
+    grid_positions = calculate_grid_layout(
+        core_labels=core_labels,
+        metadata=metadata,
+        grouping_vars=grouping_vars,
+        layout=layout,
+        cores_per_row=cores_per_row,
+    )
+
+    # Determine coordinate system name
+    if coordinate_system_name is None:
+        if grouping_vars is not None:
+            var_str = "_".join(grouping_vars)
+            coordinate_system_name = f"grid_sorted_by_{var_str}"
+        else:
+            coordinate_system_name = "grid_global"
+
+    # Calculate core dimensions for spacing
+    # Use first core as reference
+    first_core_label = core_labels[0]
+    first_core_img = consolidated_sdata.images[f"{first_core_label}_image"]
+
+    # Get image dimensions
+    if isinstance(first_core_img, DataTree):
+        img_arr = first_core_img["scale0"].to_array()
+    else:
+        img_arr = first_core_img
+
+    core_height = img_arr.sizes["y"]
+    core_width = img_arr.sizes["x"]
+
+    # Calculate spacing
+    spacing_y = core_height * (1 + padding_factor)
+    spacing_x = core_width * (1 + padding_factor)
+
+    # Apply grid transformations to all elements
+    for core_label in core_labels:
+        row, col = grid_positions[core_label]
+
+        # Calculate translation to grid position
+        grid_y = row * spacing_y
+        grid_x = col * spacing_x
+
+        grid_translation = Translation([grid_x, grid_y], axes=("x", "y"))
+
+        # Apply to image
+        img_name = f"{core_label}_image"
+        if img_name in consolidated_sdata.images:
+            img_element = consolidated_sdata.images[img_name]
+
+            # Get existing transformations
+            existing_transforms = get_transformation(img_element, get_all=True)
+
+            # Add grid transformation
+            # Chain: local coords -> grid coords
+            existing_transforms[coordinate_system_name] = Sequence(
+                [
+                    existing_transforms.get(
+                        "local", Translation([0, 0], axes=("x", "y"))
+                    ),
+                    grid_translation,
+                ]
+            )
+
+            # Update transformations
+            set_transformation(img_element, existing_transforms, set_all=True)
+
+        # Apply to labels
+        labels_name = f"{core_label}_labels"
+        if labels_name in consolidated_sdata.labels:
+            labels_element = consolidated_sdata.labels[labels_name]
+
+            existing_transforms = get_transformation(
+                labels_element, get_all=True
+            )
+            existing_transforms[coordinate_system_name] = Sequence(
+                [
+                    existing_transforms.get(
+                        "local", Translation([0, 0], axes=("x", "y"))
+                    ),
+                    grid_translation,
+                ]
+            )
+            set_transformation(
+                labels_element, existing_transforms, set_all=True
+            )
+
+    return consolidated_sdata
+
+
+def segment_cores_individually(
+    sdata: SpatialData,
+    image_name: str,
+    segmentation_channel: str | list[str],
+    tma_table_name: str = "tma_table",
+    core_labels: list[str] | None = None,
+    model_type: Literal[
+        "cyto3",
+        "cyto2",
+        "cyto",
+        "nuclei",
+        "tissuenet_cp3",
+        "livecell_cp3",
+        "yeast_PhC_cp3",
+        "yeast_BF_cp3",
+        "bact_phase_cp3",
+        "bact_fluor_cp3",
+        "deepbacs_cp3",
+        "cyto2_cp3",
+    ] = "nuclei",
+    nuclei_diam_um: float | None = None,
+    channel_merge_method: Literal["max", "mean", "sum", "median"] = "max",
+    optional_nuclear_channel: str | None = None,
+    normalize: bool = True,
+    cellprob_threshold: float = 0.0,
+    flow_threshold: float = 0.4,
+    custom_model: Path | str | bool = False,
+    denoise_model: str | None = None,
+    scale: str = "scale0",
+    **kwargs,
+) -> SpatialData:
+    """
+    Segment TMA cores individually with per-core label masks.
+
+    This function extracts each core, segments it independently, and creates
+    per-core label masks (e.g., "A-1_labels", "A-2_labels"). This approach
+    provides better organization for downstream per-core analysis.
+
+    Args:
+        sdata: SpatialData object containing TMA data.
+        image_name: Name of the image to segment.
+        segmentation_channel: Channel(s) to use for segmentation.
+        tma_table_name: Name of the table containing TMA core metadata.
+        core_labels: List of specific cores to segment. If None, segments all cores.
+        model_type: Cellpose model type to use.
+        nuclei_diam_um: Expected nucleus diameter in microns. If None, auto-estimated.
+        channel_merge_method: Method to merge multiple channels.
+        optional_nuclear_channel: Optional nuclear channel for cyto models.
+        normalize: Whether to normalize image intensities.
+        cellprob_threshold: Cell probability threshold for Cellpose.
+        flow_threshold: Flow threshold for Cellpose.
+        custom_model: Path to custom Cellpose model.
+        denoise_model: Denoising model to use.
+        scale: Image scale to use for segmentation.
+        **kwargs: Additional arguments passed to Cellpose.
+
+    Returns:
+        SpatialData object with per-core label masks added.
+
+    Example:
+        >>> sdata_segmented = segment_cores_individually(
+        ...     sdata,
+        ...     image_name="TMA_image",
+        ...     segmentation_channel="DAPI",
+        ...     nuclei_diam_um=10.0,
+        ... )
+        >>> print(sdata_segmented.labels.keys())
+        >>> # ['A-1_labels', 'A-2_labels', 'B-1_labels', ...]
+    """
+    # Extract cores as consolidated SpatialData
+    cores_sdata = create_core_sdata(
+        sdata=sdata,
+        tma_table_name=tma_table_name,
+        image_name=image_name,
+        labels_name=None,  # No existing labels
+        mode="consolidated",
+        core_labels=core_labels,
+    )
+
+    # Get core labels from images
+    if core_labels is None:
+        core_labels = [
+            name.replace("_image", "")
+            for name in cores_sdata.images
+            if name.endswith("_image")
+        ]
+
+    # Segment each core
+    labels_dict = {}
+
+    for core_label in core_labels:
+        core_image_name = f"{core_label}_image"
+
+        if core_image_name not in cores_sdata.images:
+            logger.warning(f"Core {core_label} not found, skipping")
+            continue
+
+        logger.info(f"Segmenting core {core_label}")
+
+        # Create temporary SpatialData for this core
+        temp_sdata = SpatialData(
+            images={image_name: cores_sdata.images[core_image_name]}
+        )
+
+        # Segment using existing function
+        try:
+            segmented_sdata = segment_tma(
+                spatialdata=temp_sdata,
+                image_name=image_name,
+                output_segmentation_label="labels",
+                segmentation_channel=segmentation_channel,
+                tiling_shapes=None,  # No tiling - already cropped
+                model_type=model_type,
+                nuclei_diam_um=nuclei_diam_um,
+                channel_merge_method=channel_merge_method,
+                optional_nuclear_channel=optional_nuclear_channel,
+                normalize=normalize,
+                cellprob_threshold=cellprob_threshold,
+                flow_threshold=flow_threshold,
+                custom_model=custom_model,
+                denoise_model=denoise_model,
+                scale=scale,
+                inplace=True,
+                **kwargs,
+            )
+
+            # Extract the labels
+            labels_dict[f"{core_label}_labels"] = segmented_sdata.labels[
+                "labels"
+            ]
+
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to segment core {core_label}: {e}")
+            continue
+
+    # Add labels to the cores SpatialData
+    for label_name, label_data in labels_dict.items():
+        cores_sdata.labels[label_name] = label_data
+
+    return cores_sdata
+
+
+def measure_cores_individually(
+    sdata: SpatialData,
+    image_name: str,
+    tma_table_name: str = "tma_table",
+    core_labels: list[str] | None = None,
+    extended_properties: bool = False,
+    intensity_mode: Literal["mean", "median"] = "mean",
+    scale: str = "scale0",
+) -> SpatialData:
+    """
+    Measure properties of cells in per-core label masks.
+
+    This function measures cell properties for each core's label mask and
+    creates per-core measurement tables.
+
+    Args:
+        sdata: SpatialData object with per-core images and labels.
+        image_name: Original image name (used to find core images like "A-1_image").
+        tma_table_name: Name of the table containing TMA core metadata.
+        core_labels: List of specific cores to measure. If None, measures all cores.
+        extended_properties: Whether to compute extended morphological properties.
+        intensity_mode: How to aggregate intensity values ("mean" or "median").
+        scale: Image scale to use for measurements.
+
+    Returns:
+        SpatialData object with per-core measurement tables added.
+
+    Example:
+        >>> sdata_measured = measure_cores_individually(
+        ...     sdata_segmented,
+        ...     image_name="TMA_image",
+        ...     extended_properties=True,
+        ... )
+        >>> print(sdata_measured.tables.keys())
+        >>> # ['A-1_table', 'A-2_table', 'B-1_table', ...]
+    """
+    # Get core labels from label elements
+    if core_labels is None:
+        core_labels = [
+            name.replace("_labels", "")
+            for name in sdata.labels
+            if name.endswith("_labels")
+        ]
+
+    # Measure each core
+    for core_label in core_labels:
+        core_image_name = f"{core_label}_image"
+        core_labels_name = f"{core_label}_labels"
+
+        if core_image_name not in sdata.images:
+            logger.warning(f"Core image {core_image_name} not found, skipping")
+            continue
+
+        if core_labels_name not in sdata.labels:
+            logger.warning(
+                f"Core labels {core_labels_name} not found, skipping"
+            )
+            continue
+
+        logger.info(f"Measuring core {core_label}")
+
+        # Create temporary SpatialData for this core
+        temp_sdata = SpatialData(
+            images={image_name: sdata.images[core_image_name]},
+            labels={core_labels_name: sdata.labels[core_labels_name]},
+        )
+
+        # Measure using existing function
+        try:
+            measured_sdata = measure_tma(
+                spatialdata=temp_sdata,
+                image_name=image_name,
+                segmentation_name=core_labels_name,
+                output_table_name=f"{core_label}_table",
+                tiling_shapes=None,  # No tiling
+                extended_properties=extended_properties,
+                intensity_mode=intensity_mode,
+                scale=scale,
+                inplace=True,
+            )
+
+            # Extract and add the table
+            if f"{core_label}_table" in measured_sdata.tables:
+                core_table = measured_sdata.tables[f"{core_label}_table"]
+                # Add core label to table metadata
+                core_table.obs["tma_label"] = core_label
+                sdata.tables[f"{core_label}_table"] = core_table
+
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Failed to measure core {core_label}: {e}")
+            continue
+
+    return sdata

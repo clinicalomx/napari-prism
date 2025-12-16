@@ -1,8 +1,10 @@
 """Classes for generating sample-level AnnData objects."""
 
-from typing import Literal
+import json
+from typing import Any, Literal
 
 import pandas as pd
+import xarray as xr
 from anndata import AnnData
 from pandas import DataFrame
 
@@ -512,7 +514,7 @@ class ObsAggregator:
         aggregation_function: Literal[
             "min", "max", "sum", "mean", "median", "first", "last"
         ],
-        categorical_column: str | list[str] = None,
+        categorical_column: str | list[str] | None = None,
     ):
         numerical_as_category_name = f"binned_{numerical_column_to_bin}"
         store_adata_obs = self.adata.obs.copy()
@@ -569,6 +571,213 @@ class ObsAggregator:
         df = df.fillna("NA")
 
         return df
+
+
+@xr.register_dataarray_accessor("proportion")
+class ProportionMetricAccessor:
+    def __init__(self, xarray_obj):
+        self._obj = xarray_obj
+
+    def validate(self):
+        """
+        Validate the Proportion metric object.
+        """
+        self._obj.metric.validate()
+        cell_population_a = self._obj.coords.get("cell_population_a", None)
+        assert cell_population_a is not None
+        return self._obj
+
+    def plot(self):
+        self._obj.metric.plot()
+
+    def pretty_print(self):
+        self._obj.metric.pretty_print()
+
+
+def create_proportion_metric(
+    values: pd.DataFrame,
+    obs_column: str | None = None,
+    sample_id_column: str | None = None,
+    compartment_column: str | None = None,
+    parameters: dict[str, Any] | None = None,
+) -> xr.DataArray:
+    """
+    Create a ProportionMetric as a DataArray with common metadata.
+    Unlike create_spatial_metric, does not support incremental (i.e. sample
+    per sample) values. Needs the entire dataframe (as this is made with
+    cell_proportions in napari_prism.adata_ops.feature_modelling.obs).
+
+    Sets other fields (second cell, second compartment) to null entities.
+
+    """
+    df = values.copy()
+    POPA = "cell_population_a"
+    COMPA = "cell_compartment_a"
+    POPB = "cell_population_b"
+    COMPB = "cell_compartment_b"
+    if len(df.columns.names) == 2:
+        df_long = df.stack(level=[0]).reset_index()
+        meta_cols = df_long.columns[:2]
+        static_dims = ["sample_id", "metric_name", "cell_population_a"]
+        sample_id_key, _ = meta_cols
+    elif len(df.columns.names) == 3:
+        df_long = df.stack(level=[0, 1]).reset_index()
+        meta_cols = df_long.columns[:3]
+        static_dims = [
+            "sample_id",
+            "metric_name",
+            COMPA,
+            POPA,
+        ]
+        sample_id_key, _, compartment_key = meta_cols
+    else:
+        raise ValueError("Invalid dataframe format.")
+
+    ct_cols = [c for c in df_long.columns if c not in meta_cols]
+    df_ll = df_long.melt(
+        id_vars=meta_cols,
+        value_vars=ct_cols,
+        var_name=POPA,
+        value_name="val",
+    )
+    df_ll.columns = static_dims + ["val"]
+    df_ll["sample_id"] = df_ll["sample_id"].astype(str)
+
+    appendable = [
+        COMPA,
+        POPB,
+        COMPB,
+    ]
+    for a in appendable:
+        if a not in df_ll.columns:
+            df_ll[a] = "None"
+
+    non_val = [c for c in df_ll.columns if c != "val"]
+    da = df_ll.set_index(non_val)["val"].to_xarray()
+
+    if sample_id_column:
+        da["sample_id"].attrs["original_key"] = sample_id_column
+
+    if compartment_column:
+        da[COMPA].attrs["compartment_column"] = compartment_column
+
+    if obs_column:
+        da[POPA].attrs["cell_type_column"] = obs_column
+
+    da = da.proportion.validate()
+
+    # Add parameters as DataArray aligned with metric_name dimension
+    if parameters:
+        parameters_da = xr.DataArray(
+            [json.dumps(parameters)],
+            dims="metric_name",
+            coords={"metric_name": da.metric_name.values},
+            name="parameters",
+        )
+        # Convert to Dataset to add parameters, then back to DataArray
+        ds = da.to_dataset(name="metric_values")
+        ds = ds.assign(parameters=parameters_da)
+        da = ds.metric_values
+        da.attrs.update(ds.attrs)
+
+    return da
+
+
+def cell_proportions(
+    adata: AnnData,
+    sample_key: str,
+    obs_column: str,
+    compartment_column: str | None = None,
+    normalise_by_compartment: bool = False,
+    as_xarray: bool = True,
+) -> xr.DataArray:
+    """
+    Compute proportions of a given obs_column in each sample.
+    """
+    sample_agg = ObsAggregator(adata, sample_key)
+
+    # check if obs_column is a valid key;
+    if obs_column not in sample_agg.categorical_keys:
+        raise ValueError(
+            f"Feature column {obs_column} is not a valid categorical key"
+        )
+    if compartment_column is not None and (
+        compartment_column not in sample_agg.categorical_keys
+    ):
+        raise ValueError(
+            f"Compartment column {compartment_column} is not a valid "
+            "categorical key"
+        )
+
+    if compartment_column:
+        # proportions add to 1 for each sample+compartment combination
+        if normalise_by_compartment:
+            proportions = sample_agg.get_category_proportions(
+                [compartment_column, obs_column],
+                normalisation_column=compartment_column,
+            )
+        else:
+            proportions = sample_agg.get_category_proportions(
+                [compartment_column, obs_column],
+            )
+
+    else:
+        proportions = sample_agg.get_category_proportions(obs_column)
+
+    if as_xarray:
+        return create_proportion_metric(
+            proportions,
+            obs_column=obs_column,
+            sample_id_column=sample_key,
+            compartment_column=compartment_column,
+            parameters={
+                "normalised_by_compartment": (
+                    compartment_column if normalise_by_compartment else None
+                )
+            },
+        )
+    else:
+        return proportions
+
+
+def get_sample_covariate(
+    adata: AnnData,
+    sample_column: str,
+    covariate_column: str | list[str],
+):
+    """
+    Generate a sample-level xarray DataArray from a cell-level AnnData object,
+    with the given covariate(s) stored as coordinates.
+    """
+    sample_agg = ObsAggregator(adata, sample_column)
+
+    if isinstance(covariate_column, str):
+        if covariate_column not in sample_agg.parallel_keys:
+            raise ValueError(
+                f"Covariate column {covariate_column} is not a valid parallel key"
+            )
+        else:
+            df = sample_agg.get_metadata_df(covariate_column)
+    elif isinstance(covariate_column, list):
+        if any(
+            c for c in covariate_column if c not in sample_agg.parallel_keys
+        ):
+            raise ValueError(
+                "One or more covariate columns are not valid parallel keys"
+            )
+        else:
+            dfs = []
+            for c in covariate_column:
+                dfs.append(sample_agg.get_metadata_df(c))
+            df = pd.concat(dfs, axis=1)
+
+    else:
+        raise ValueError(
+            "covariate_column must be a string or list of strings"
+        )
+
+    df.index = df.index.astype(str)
+    return df
 
 
 def generate_sample_level_adata(
@@ -628,43 +837,17 @@ def generate_sample_level_adata(
     for p in sample_agg.parallel_keys:
         parallel_dfs.append(sample_agg.get_metadata_df(p))
     parallel_df = pd.concat(parallel_dfs, axis=1)
+    parallel_df.index = parallel_df.index.astype(str)
 
     if aggregations:
         feature_column_obsm_label = f"{feature_column}_proportion"
     else:
         feature_column_obsm_label = feature_column
 
+    metadata_df.index = metadata_df.index.astype(str)
+
     return AnnData(
         obs=parallel_df,
         obsm={feature_column_obsm_label: metadata_df},
         uns={"obs_aggregator_attrs": {"sample_column": sample_column}},
     )
-
-
-# class ObsAggregatorAgent:
-#     pass
-
-
-# class ObsAnnotator:
-#     """
-#     Obs Annotator for labelling cell metadata with from various annotation
-#     sources (dictionaries, spatial queries, etc).
-#     """
-
-#     def spatial_annotation(self):
-#         """https://spatialdata.scverse.org/en/stable/tutorials/notebooks/
-#         notebooks/examples/napari_rois.html
-#         """
-
-#     def annotate_column(self, column_name, mapping, condition, subset):
-#         pass
-
-#     def append_column(self, column_name, mapping, condition, subset):
-#         pass
-
-#     def remove_column(self, column_name):
-#         pass
-
-#     def annotate_column_by_rules(self, column_name, rules):
-#         """Using a rules based dictionary, annotate column labels
-#         based on the value(s) of two or more columns."""
