@@ -9,13 +9,12 @@ import scipy
 from anndata import AnnData
 from joblib import Parallel, delayed
 from loguru import logger
-from scipy.sparse import csr_matrix
-from sklearn.cluster import KMeans, MiniBatchKMeans
-from sklearn.neighbors import NearestNeighbors
-
 from napari_prism.models.adata_ops.spatial_analysis._utils import (
     symmetrise_graph,
 )
+from scipy.sparse import csr_matrix
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.neighbors import NearestNeighbors
 
 
 # Pairwise Cell Computations
