@@ -49,8 +49,7 @@ class ProximityDensityMetricAccessor:
 
         if (compartment_a is None) != (compartment_b is None):
             raise ValueError(
-                "Cannot compare global populations to compartmental"
-                "populations"
+                "Cannot compare global populations to compartmentalpopulations"
             )
         return self._obj
 
