@@ -56,8 +56,7 @@ class GCrossMetricAccessor:
 
         if (compartment_a is None) != (compartment_b is None):
             raise ValueError(
-                "Cannot compare global populations to compartmental"
-                "populations"
+                "Cannot compare global populations to compartmentalpopulations"
             )
         return self._obj
 
@@ -214,7 +213,7 @@ def _gcross_single_sample_single_pair(
 
     if (query_cell_compartment is None) != (target_cell_compartment is None):
         raise ValueError(
-            "Cannot compare global populations to compartmental" "populations"
+            "Cannot compare global populations to compartmentalpopulations"
         )
 
     if query_cell_compartment is not None:
