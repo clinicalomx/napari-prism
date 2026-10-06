@@ -281,9 +281,7 @@ class ObsAggregatorWidget(AnnDataOperatorWidget):
                     categorical_column=selection,
                     aggregation_function=aggregation_function,
                 )
-                table_suffix = (
-                    f"{numerical_column} within each " f"{selection}"
-                )
+                table_suffix = f"{numerical_column} within each {selection}"
 
             else:
                 print("Unchcked aggregation function")
