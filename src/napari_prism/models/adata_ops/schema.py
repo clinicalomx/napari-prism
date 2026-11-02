@@ -132,7 +132,7 @@ class MetricAccessor:
                 pair = f"{cell_population_a} <-> {cell_population_b}"
         else:
             pair = f"{cell_population_a}"
-        return f"SpatialMetric {metric_name} " f"[{pair}]"
+        return f"SpatialMetric {metric_name} [{pair}]"
 
 
 def create_metric(
