@@ -30,7 +30,6 @@ from spatialdata import SpatialData
 from spatialdata.models import TableModel
 from spatialdata.models.models import Schema_t
 from superqt import QLabeledDoubleRangeSlider, QLabeledSlider
-from superqt.sliders import MONTEREY_SLIDER_STYLES_FIX
 
 from napari_prism import pp  # refactored preprocessing class to funcs only
 from napari_prism.models.adata_ops.cell_typing.augmentation import (
@@ -1004,10 +1003,6 @@ class QCWidget(AnnDataOperatorWidget):
         self.range_slider.setHandleLabelPosition(
             QLabeledDoubleRangeSlider.LabelPosition.NoLabel
         )
-
-        self.range_slider.setStyleSheet(
-            MONTEREY_SLIDER_STYLES_FIX
-        )  # macos fix
         self.range_slider.valueChanged.connect(self.update_lines)
         self.native.layout().addWidget(self.range_slider)
 
@@ -1024,9 +1019,6 @@ class QCWidget(AnnDataOperatorWidget):
         self.nbins_slider = QLabeledSlider(Qt.Horizontal)
         self.nbins_slider.setRange(0, 500)
         self.nbins_slider.setValue(0)
-        self.nbins_slider.setStyleSheet(
-            MONTEREY_SLIDER_STYLES_FIX  # macos fix
-        )
         self.native.layout().addWidget(self.nbins_slider)
         self.nbins_slider.valueChanged.connect(self.on_slider_moved)
         # Buffer the nbins slider so plot isnt updated too frequently
